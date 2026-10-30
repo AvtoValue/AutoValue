@@ -7,7 +7,8 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server/server.js",
-    "test": "node --test",
+    "test": "node --test \"test/*.test.js\"",
+    "test:e2e": "node --test \"test/e2e/*.e2e.js\"",
     "build:extension": "cd extension && zip -r ../public/autovalue-extension.zip ."
   }
 }

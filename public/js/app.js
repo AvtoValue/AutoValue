@@ -90,6 +90,9 @@ function applyLang(){
  ['researchHeading','researchIntro','manualHeading','manualIntro','addComp','loadListings'].forEach(k=>{$(k).textContent=s[k]});
  $('comparePrices').textContent=s.compare;
  ['extSummary','extHow','extDownload'].forEach(k=>{$(k).textContent=s[k]});
+ $('demo').textContent=s.demoBtn;$('garageHeading').textContent=s.garageHeading;$('share').textContent=s.shareBtn;$('saveGarage').textContent=s.saveGarage;$('feedbackLink').textContent=s.feedback;
+ $('demoBanner').textContent=s.demoBanner;$('demoBanner').classList.toggle('hidden',!isDemo);$('saveGarage').hidden=isDemo;
+ renderGarage();
  $('edit').textContent=s.editBtn;$('copy').textContent=s.copyBtn;
  if(!lastSummary){$('estimatedRangeValue').textContent=s.notAvailable;$('confidenceValue').textContent=s.pendingData}
  $('privacyLink').textContent=s.privacyLink;$('privacyLink').href='privacy.html?lang='+lang();
@@ -187,7 +190,9 @@ function buildCompRows(rows){
   const text=el('textarea',{id:'text'+i,rows:2,placeholder:s.paste});
   const info=el('div',{className:'comp-info',id:'info'+i,textContent:s.empty});
   const price=el('input',{type:'number',min:'1',id:'comp'+i,placeholder:s.price});price.setAttribute('aria-label',s.price+' '+i);
-  const row=el('div',{className:'comp-row'},[el('div',{className:'comp-row-head'},[link,open]),text,paste,el('div',{className:'comp-row-foot'},[info,price])]);
+  const summary=el('button',{type:'button',className:'comp-summary',id:'sum'+i});
+  const row=el('div',{className:'comp-row'},[summary,el('div',{className:'comp-row-head'},[link,open]),text,paste,el('div',{className:'comp-row-foot'},[info,price])]);
+  summary.addEventListener('click',()=>{row.classList.remove('collapsed');link.focus()});
   if(i>5){const rm=el('button',{type:'button',className:'btn quiet comp-remove',textContent:s.remove});rm.addEventListener('click',()=>removeRow(i));row.append(el('div',{className:'comp-extra'},[el('span'),rm]))}
   box.append(row);
   const p=prev[i-1];
@@ -196,9 +201,25 @@ function buildCompRows(rows){
   paste.addEventListener('click',()=>pasteInto(i));
   text.addEventListener('input',()=>parseAdText(i));
   if(p&&p.text)parseAdText(i);else if(p&&p.meta)describeRow(i,JSON.parse(p.meta),true);
+  if(p)collapseRow(i);
  }
  $('addComp').disabled=compCount>=MAX_COMPS;
  saveState();
+}
+// After a comparison (or when rows are restored), a row with a price folds into one summary line ("#1 · 33.900 € · 2019 · 58.000 km ✓") to save space.
+function collapseRow(i){
+ const price=Number($('comp'+i).value),row=$('compRows').children[i-1];
+ if(!(price>0)||!row)return;
+ const s=u(),meta=$('link'+i).dataset.meta?JSON.parse($('link'+i).dataset.meta):{};
+ const parts=['#'+i,money(price)];
+ if(meta.year)parts.push(String(meta.year));
+ if(Number.isFinite(meta.km))parts.push(meta.km.toLocaleString(locale())+' km');
+ const warn=core.comparabilityWarnings(meta,target()).length>0;
+ const sum=$('sum'+i);
+ sum.className='comp-summary'+(warn?' warn':'');
+ sum.replaceChildren(parts.join(' · ')+(warn?' ⚠':' ✓'),el('span',{textContent:s.rowEdit+' ✎'}));
+ sum.setAttribute('aria-label',parts.join(', ')+'. '+s.rowEdit);
+ row.classList.add('collapsed');
 }
 const canReadClipboard=!!(navigator.clipboard&&navigator.clipboard.readText);
 function pasteInto(i){
@@ -248,6 +269,7 @@ function comparePrices(){
  ads.forEach(a=>{a.adjusted=core.adjustPrice(withPrice(a),tgt,model)});
  const result=core.summarizeComparison({prices:ads.map(a=>a.adjusted),mode,askingPrice:Number($('price').value)});
  lastSummary=result?{result,ads,model,adjust}:null;
+ for(let i=1;$('link'+i);i++)collapseRow(i);
  renderComparison();
  saveState();
 }
@@ -291,6 +313,62 @@ function renderComparison(){
  out.replaceChildren(...nodes);
  $('estimatedRangeValue').textContent=mode==='buy'?money(result.buyRange[0])+'–'+money(result.buyRange[1]):money(st.min)+'–'+money(st.max);
  $('confidenceValue').textContent=s.confShort[result.confidence];
+ renderChart();
+}
+
+// --- Price/mileage chart (inline SVG) ---
+const SVG_NS='http://www.w3.org/2000/svg';
+function svgEl(tag,attrs,text){
+ const e=document.createElementNS(SVG_NS,tag);
+ Object.keys(attrs||{}).forEach(k=>e.setAttribute(k,attrs[k]));
+ if(text!==undefined)e.textContent=text;
+ return e;
+}
+function renderChart(){
+ const box=$('chart'),s=u();
+ const hide=()=>{box.classList.add('hidden');box.replaceChildren()};
+ if(!lastSummary)return hide();
+ const {result,ads,model}=lastSummary,tgt=target(),ask=mode==='sell'?Number($('price').value):0;
+ const pts=ads.filter(a=>Number.isFinite(a.meta.km)&&a.price>0);
+ if(pts.length<2)return hide();
+ const trend=model&&tgt.km?km=>result.stats.median+model.perKm*(km-tgt.km):null;
+ const xs=pts.map(a=>a.meta.km).concat(tgt.km?[tgt.km]:[]);
+ const xt=core.niceTicks(Math.min(...xs),Math.max(...xs),(document.querySelector('.manual-tools').clientWidth||640)<480?3:5);
+ const ys=pts.map(a=>a.price);
+ if(mode==='buy')ys.push(...result.buyRange);
+ if(ask>0)ys.push(ask);
+ if(trend)ys.push(trend(xt[0]),trend(xt[xt.length-1]));
+ const yt=core.niceTicks(Math.min(...ys),Math.max(...ys),4);
+ // Draw at the on-screen width so labels stay readable on phones.
+ const W=Math.round(Math.max(300,Math.min(640,(document.querySelector('.manual-tools').clientWidth||640)-28))),H=W<480?260:300,L=66,R=26,T=14,B=40,x0=xt[0],x1=xt[xt.length-1],y0=yt[0],y1=yt[yt.length-1];
+ const sx=v=>L+(v-x0)/((x1-x0)||1)*(W-L-R),sy=v=>H-B-(v-y0)/((y1-y0)||1)*(H-T-B);
+ const svg=svgEl('svg',{viewBox:'0 0 '+W+' '+H,role:'img','aria-label':s.chartTitle+': '+pts.length+' '+s.chartAds.toLowerCase()});
+ yt.forEach(v=>{svg.append(svgEl('line',{class:'grid',x1:L,x2:W-R,y1:sy(v),y2:sy(v)}),svgEl('text',{class:'axis-label',x:L-8,y:sy(v)+4,'text-anchor':'end'},money(v)))});
+ xt.forEach(v=>{svg.append(svgEl('line',{class:'grid',x1:sx(v),x2:sx(v),y1:H-B,y2:H-B+5}),svgEl('text',{class:'axis-label',x:sx(v),y:H-B+18,'text-anchor':'middle'},v.toLocaleString(locale())))});
+ svg.append(svgEl('text',{class:'axis-label',x:(L+W-R)/2,y:H-4,'text-anchor':'middle'},s.chartKm));
+ if(mode==='buy'){const [lo,hi]=result.buyRange;svg.append(svgEl('rect',{class:'band',x:L,width:W-L-R,y:sy(hi),height:Math.max(2,sy(lo)-sy(hi))}))}
+ if(trend)svg.append(svgEl('line',{class:'trend',x1:sx(x0),y1:sy(trend(x0)),x2:sx(x1),y2:sy(trend(x1))}));
+ if(tgt.km){
+  svg.append(svgEl('line',{class:'you',x1:sx(tgt.km),x2:sx(tgt.km),y1:T,y2:H-B}));
+  const right=sx(tgt.km)>W-120;
+  svg.append(svgEl('text',{class:'you-label',x:sx(tgt.km)+(right?-6:6),y:T+12,'text-anchor':right?'end':'start'},s.chartYourCar));
+ }
+ if(ask>0&&tgt.km){const cx=sx(tgt.km),cy=sy(ask);svg.append(svgEl('path',{class:'ask',d:'M'+cx+' '+(cy-8)+'L'+(cx+8)+' '+cy+'L'+cx+' '+(cy+8)+'L'+(cx-8)+' '+cy+'Z'},undefined))}
+ pts.forEach(a=>{
+  const out=result.stats.outliers.includes(a.adjusted),warn=core.comparabilityWarnings(a.meta,tgt).length>0;
+  const c=svgEl('circle',{class:'pt'+(out?' out':warn?' warn':''),cx:sx(a.meta.km),cy:sy(a.price),r:6,tabindex:0});
+  c.append(svgEl('title',{},'#'+a.index+' · '+money(a.price)+' · '+a.meta.km.toLocaleString(locale())+' km'+(a.meta.year?' · '+a.meta.year:'')));
+  svg.append(c);
+ });
+ const legend=el('div',{className:'chart-legend'});
+ const item=(fill,label,border)=>{const i=el('i');i.style.background=fill;if(border)i.style.border=border;legend.append(el('span',{},[i,label]))};
+ item('var(--accent)',s.chartAds);item('#f3c96b',s.chartWarn);
+ if(result.stats.outliers.length)item('transparent',s.chartOutlier,'2px solid #f37b6b');
+ if(mode==='buy')item('rgba(199,243,107,.3)',s.chartBuyRange);
+ if(trend)item('#7fb2ff',s.chartTrend);
+ if(ask>0)item('#fff',s.chartAsking);
+ box.replaceChildren(el('h4',{textContent:s.chartTitle}),svg,legend,el('p',{className:'chart-note',textContent:s.chartNote}));
+ box.classList.remove('hidden');
 }
 
 // --- Optional backend (server/server.js). The page works without it, e.g. from file:// or GitHub Pages. ---
@@ -372,7 +450,7 @@ const FIELDS=['country','make','model','year','mileage','fuel','trans','powerUni
 let restoring=true,saveTimer;
 function saveState(){
  if(restoring)return;
- const state={v:1,lang:lang(),mode,step,compCount,compared:!!lastSummary,adjust:$('adjustToggle').checked,fields:{},equipment:[...document.querySelectorAll('.equipment-check:checked')].map(c=>c.value),rows:readRows()};
+ const state={v:1,lang:lang(),mode,step,compCount,garageId:currentGarageId||undefined,demo:isDemo||undefined,compared:!!lastSummary,adjust:$('adjustToggle').checked,fields:{},equipment:[...document.querySelectorAll('.equipment-check:checked')].map(c=>c.value),rows:readRows()};
  FIELDS.forEach(id=>{state.fields[id]=$(id).value});
  try{localStorage.setItem(STORE_KEY,JSON.stringify(state))}catch(e){}
 }
@@ -383,6 +461,7 @@ function restoreState(){
  if(!st||st.v!==1)return;
  try{
   if(translations[st.lang])$('lang').value=st.lang;
+  currentGarageId=typeof st.garageId==='string'?st.garageId:null;isDemo=!!st.demo;
   if(st.mode==='buy'||st.mode==='sell'){mode=st.mode;document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('selected',x.dataset.mode===mode));updateModeFields()}
   const f=st.fields||{},set=id=>{if(typeof f[id]==='string')$(id).value=f[id]};
   set('country');set('make');setModels();
@@ -398,9 +477,97 @@ function restoreState(){
  }catch(e){}
 }
 function resetAll(){
- if(!confirm(u().resetConfirm))return;
+ if(!confirm(u().resetSaves))return;
+ stashCurrent();
  try{localStorage.removeItem(STORE_KEY)}catch(e){}
- restoring=true;location.reload();
+ restoring=true;location.replace(location.pathname);
+}
+
+// --- My garage, shared reports and the example ---
+const GARAGE_KEY='autovalue:garage',NOTICE_KEY='autovalue:notice',MAX_GARAGE=20;
+let currentGarageId=null,isDemo=false;
+function readJson(storage,key,fallback){try{const v=JSON.parse(storage.getItem(key)||'null');return v==null?fallback:v}catch(e){return fallback}}
+function writeJson(storage,key,value){try{storage.setItem(key,JSON.stringify(value));return true}catch(e){return false}}
+function garage(){const g=readJson(localStorage,GARAGE_KEY,[]);return Array.isArray(g)?g.filter(x=>x&&x.id&&x.state):[]}
+// Copies the current valuation into My garage (updating its earlier copy). The example is never stored.
+function stashCurrent(){
+ saveState();
+ const st=readJson(localStorage,STORE_KEY,null);
+ if(!st||st.demo||!st.fields||!st.fields.make||!st.fields.model)return null;
+ const list=garage(),id=st.garageId||'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+ const old=list.find(x=>x.id===id);
+ st.garageId=id;currentGarageId=id;
+ const median=lastSummary?Math.round(lastSummary.result.stats.median):(old?old.median:null);
+ writeJson(localStorage,GARAGE_KEY,[{id,savedAt:Date.now(),median,state:st}].concat(list.filter(x=>x.id!==id)).slice(0,MAX_GARAGE));
+ writeJson(localStorage,STORE_KEY,st);
+ return id;
+}
+// Replaces the current valuation and reloads, so the page starts from a clean form.
+function openState(st,noticeKey){
+ writeJson(localStorage,STORE_KEY,st);
+ if(noticeKey)writeJson(sessionStorage,NOTICE_KEY,noticeKey);
+ restoring=true;location.replace(location.pathname);
+}
+function renderGarage(){
+ const s=u(),list=garage(),box=$('garageList');
+ $('garage').classList.toggle('hidden',!list.length);
+ box.replaceChildren(...list.map(g=>{
+  const f=g.state.fields||{},model=f.model===OTHER_MODEL?s.otherModel:f.model||'';
+  const title=[f.make===OTHER_MAKE?s.otherMake:f.make,model,f.year].filter(Boolean).join(' ');
+  const details=[new Date(g.savedAt).toLocaleDateString(locale()),g.median?s.median+money(g.median):s.garageNoResult];
+  if(g.id===currentGarageId)details.push(s.garageCurrent);
+  const open=el('button',{type:'button',className:'btn quiet',textContent:s.garageOpen,disabled:g.id===currentGarageId});
+  const del=el('button',{type:'button',className:'btn quiet',textContent:s.garageDelete});
+  open.addEventListener('click',()=>{stashCurrent();openState(g.state,'openedFromGarage')});
+  del.addEventListener('click',()=>{
+   if(!confirm(s.garageDeleteConfirm))return;
+   writeJson(localStorage,GARAGE_KEY,garage().filter(x=>x.id!==g.id));
+   if(g.id===currentGarageId){currentGarageId=null;saveState()}
+   renderGarage();
+  });
+  return el('li',{className:'garage-item'+(g.id===currentGarageId?' current':'')},[el('div',{},[el('b',{textContent:title}),el('small',{textContent:details.join(' · ')})]),el('div',{className:'garage-actions'},[open,del])]);
+ }));
+}
+function showPendingNotice(){
+ const key=readJson(sessionStorage,NOTICE_KEY,null);
+ if(!key)return;
+ try{sessionStorage.removeItem(NOTICE_KEY)}catch(e){}
+ if(typeof u()[key]==='string')notify(u()[key]);
+}
+function saveToGarage(){if(stashCurrent()){notify(u().garageSaved);renderGarage()}}
+const DEMO_ADS=[[2017,150000,12900],[2018,135000,14200],[2018,110000,15400],[2019,95000,16900],[2018,125000,14600],[2017,118000,13900],[2019,140000,15200],[2020,80000,18900]];
+function loadDemo(){
+ stashCurrent();
+ const rows=DEMO_ADS.map(([year,km,price])=>({link:'',text:'',price:String(price),meta:JSON.stringify({price,year,km,kw:110,hp:150,fuel:'Diesel',transmission:'Manual'})}));
+ openState({v:1,lang:lang(),mode:'buy',step:3,compCount:rows.length,compared:true,adjust:true,demo:true,equipment:[],rows,
+  fields:{country:$('country').value,make:'Škoda',model:'Octavia',year:'2018',mileage:'120000',fuel:'Diesel',trans:'Manual',powerUnit:'kw',powerEntry:'110',color:'',price:'',vin:'',sellerPros:'',sellerCons:'',trim:'',condition:''}},null);
+}
+function shareReport(){
+ const s=u();saveState();
+ const st=readJson(localStorage,STORE_KEY,null);if(!st)return;
+ const fields={};
+ // The VIN stays private; everything needed to rebuild the report is included.
+ Object.keys(st.fields||{}).forEach(k=>{if(k!=='vin'&&st.fields[k])fields[k]=st.fields[k]});
+ const rows=(st.rows||[]).filter(r=>r.link||r.price).map(r=>({link:r.link,price:r.price,meta:r.meta}));
+ const url=location.origin+location.pathname+'#r='+core.encodeState({v:1,lang:st.lang,mode:st.mode,adjust:st.adjust,demo:st.demo,fields,equipment:st.equipment,rows});
+ if(navigator.share){navigator.share({title:s.shareText,url}).catch(()=>{});return}
+ navigator.clipboard.writeText(url).then(()=>notify(s.shareCopied),()=>prompt(s.sharePrompt,url));
+}
+// Opens a report from a "#r=" link. Returns true when the page is reloading into it.
+function openSharedReport(){
+ if(!location.hash.startsWith('#r='))return false;
+ let p=null;
+ try{p=core.decodeState(location.hash.slice(3))}catch(e){}
+ if(!p||p.v!==1||!p.fields||typeof p.fields!=='object'){
+  history.replaceState(null,'',location.pathname);writeJson(sessionStorage,NOTICE_KEY,'sharedInvalid');return false;
+ }
+ const fields={},str=v=>typeof v==='string'?v.slice(0,5000):'';
+ FIELDS.forEach(k=>{fields[k]=str(p.fields[k])});
+ const rows=(Array.isArray(p.rows)?p.rows:[]).slice(0,MAX_COMPS).map(r=>({link:/^https?:\/\//i.test(str(r.link))?str(r.link):'',text:'',price:String(Number(r.price)>0?Number(r.price):''),meta:str(r.meta)}));
+ stashCurrent();
+ openState({v:1,lang:translations[p.lang]?p.lang:lang(),mode:p.mode==='sell'?'sell':'buy',step:3,compCount:Math.max(5,rows.length),compared:true,adjust:p.adjust!==false,demo:!!p.demo,
+  equipment:Array.isArray(p.equipment)?p.equipment.filter(x=>typeof x==='string'):[],rows,fields},'sharedLoaded');
+ return true;
 }
 
 // --- Ads sent from the browser extension (#ad=…) or the phone's share menu (?url=&text=) ---
@@ -467,17 +634,25 @@ $('quickSearch').addEventListener('keydown',onQuickSearchKey);
 $('quickSearch').addEventListener('blur',closeSuggestions);
 $('print').addEventListener('click',()=>window.print());
 $('reset').addEventListener('click',resetAll);
+$('demo').addEventListener('click',loadDemo);
+$('share').addEventListener('click',shareReport);
+$('saveGarage').addEventListener('click',saveToGarage);
 document.addEventListener('input',saveSoon);
 document.addEventListener('change',saveSoon);
-updateModeFields();
-applyLang();
-restoreState();
-restoring=false;
-readIncomingAd();
-saveState();
-detectBackend();
+if(!openSharedReport()){
+ // First visit: pick the market and language from the browser language.
+ if(!readJson(localStorage,STORE_KEY,null)){const m=core.marketForLocale(navigator.language);if(m){$('country').value=m.country;$('lang').value=m.lang}}
+ updateModeFields();
+ applyLang();
+ restoreState();
+ restoring=false;
+ readIncomingAd();
+ saveState();
+ detectBackend();
+ showPendingNotice();
+}
 // Another tab (e.g. one opened by the extension) saved new entries: refresh this one if it is in the background.
-window.addEventListener('hashchange',readIncomingAd);
+window.addEventListener('hashchange',()=>{if(!openSharedReport()){showPendingNotice();readIncomingAd()}});
 window.addEventListener('storage',e=>{if(e.key===STORE_KEY&&document.hidden)location.reload()});
 if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();

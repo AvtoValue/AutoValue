@@ -159,3 +159,30 @@ test('adjustPrice moves a price to the target car and caps large changes', () =>
   assert.equal(core.adjustPrice({ price: 10000 }, { year: 2018, km: 100000 }, m), 10000);
   assert.equal(core.adjustPrice({ price: 10000, year: 2017, km: 1 }, { year: 2018, km: 100000 }, null), 10000);
 });
+
+test('encodeState and decodeState round-trip Unicode and are URL safe', () => {
+  const state = { make: 'Škoda', model: 'Octavia RS', rows: [{ price: 12990, meta: '{"km":1}' }], note: 'čšž €' };
+  const encoded = core.encodeState(state);
+  assert.match(encoded, /^[A-Za-z0-9_-]+$/);
+  assert.deepEqual(core.decodeState(encoded), state);
+  assert.throws(() => core.decodeState('!!!'));
+});
+
+test('niceTicks returns round values covering the range', () => {
+  assert.deepEqual(core.niceTicks(0, 100, 5), [0, 20, 40, 60, 80, 100]);
+  assert.deepEqual(core.niceTicks(27500, 40000, 4), [25000, 30000, 35000, 40000]);
+  const t = core.niceTicks(31, 149, 5);
+  assert.ok(t[0] <= 31 && t[t.length - 1] >= 149);
+  assert.deepEqual(core.niceTicks(5, 5, 5), [5]);
+});
+
+test('marketForLocale maps browser languages to markets', () => {
+  assert.deepEqual(core.marketForLocale('sl-SI'), { country: 'SI', lang: 'sl' });
+  assert.deepEqual(core.marketForLocale('de-AT'), { country: 'AT', lang: 'de' });
+  assert.deepEqual(core.marketForLocale('de'), { country: 'DE', lang: 'de' });
+  assert.deepEqual(core.marketForLocale('en-GB'), { country: 'UK', lang: 'en' });
+  assert.deepEqual(core.marketForLocale('fr-FR'), { country: 'FR', lang: 'en' });
+  assert.equal(core.marketForLocale('ja-JP'), null);
+  assert.equal(core.marketForLocale('en-US'), null);
+  assert.equal(core.marketForLocale(''), null);
+});
