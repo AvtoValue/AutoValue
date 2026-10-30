@@ -41,6 +41,37 @@ function translateOptions(){
  [...$('make').options].forEach(opt=>{if(opt.value===OTHER_MAKE)opt.textContent=u().otherMake});
  [...$('model').options].forEach(opt=>{if(opt.value===OTHER_MODEL)opt.textContent=u().otherModel});
 }
+// Engine sizes are stored and shown in cm³ ("1800 cm³"), like on the portals.
+const ccText=cc=>Math.round(cc)+' cm³';
+function populateEngines(){
+ core.ENGINE_SIZES.forEach(cc=>$('engine').append(el('option',{value:String(cc)})));
+}
+function updateEngineField(){
+ [...$('engine').options].forEach(o=>{o.textContent=o.value?ccText(Number(o.value)):u().chooseEngine});
+ const electric=$('fuel').value==='Electric';
+ $('engineField').classList.toggle('hidden',electric);
+ if(electric)$('engine').value='';
+}
+// Suggests the engine size from make, fuel, power and year (js/engines.js). A size the app picked
+// itself may be replaced when the inputs change; a size the user picked is never overwritten.
+let engineAuto=false;
+function suggestEngine(){
+ const s=u(),hint=$('engineHint'),kw=Number($('power').value);
+ const options=core.suggestEngines({make:$('make').value,fuel:$('fuel').value,kw,year:Number($('year').value)||undefined},window.AVEngines.engines);
+ const current=Number($('engine').value);
+ const choose=o=>{$('engine').value=String(o.size);engineAuto=false;suggestEngine();saveState()};
+ const sizeButton=o=>{const b=el('button',{type:'button',className:'btn quiet',textContent:fill(s.engineUse,{size:ccText(o.size)})+' · '+o.names.join(', ')});b.addEventListener('click',()=>choose(o));return b};
+ if(!options.length){if(engineAuto){$('engine').value='';engineAuto=false}hint.replaceChildren();return}
+ if(options.length===1){
+  const o=options[0],info={size:ccText(o.size),name:o.names.join(', '),make:$('make').value};
+  if(!current||engineAuto){$('engine').value=String(o.size);engineAuto=true;hint.replaceChildren(fill(s.engineAuto,info));return}
+  hint.replaceChildren(...(current===o.size?[]:[fill(s.engineUsual,info),el('br'),sizeButton(o)]));
+  return;
+ }
+ // With several possible engines, a size the app chose earlier is no longer certain.
+ if(engineAuto){$('engine').value='';engineAuto=false}
+ hint.replaceChildren(s.engineSeveral,el('br'),...options.map(sizeButton));
+}
 function populateYears(){
  for(let y=new Date().getFullYear();y>=1950;y--)$('year').append(el('option',{value:String(y),textContent:String(y)}));
 }
@@ -97,7 +128,7 @@ function applyLang(){
  $('edit').textContent=s.editBtn;$('copy').textContent=s.copyBtn;
  if(!lastSummary){$('estimatedRangeValue').textContent=s.notAvailable;$('confidenceValue').textContent=s.pendingData}
  $('privacyLink').textContent=s.privacyLink;$('privacyLink').href='privacy.html?lang='+lang();
- $('quickSearchL').textContent=s.quickSearchL;$('quickSearch').placeholder=s.quickSearchPh;
+ $('quickSearchL').textContent=s.quickSearchL;$('engineL').textContent=s.engineL;updateEngineField();suggestEngine();$('quickSearch').placeholder=s.quickSearchPh;
  $('adjustToggleL').textContent=s.adjustToggle;$('print').textContent=s.print;$('reset').textContent=s.reset;
  renderBackendStatus();
  buildCompRows();
@@ -118,7 +149,7 @@ function checkVin(){
 
 // --- Report ---
 function target(){
- return {year:Number($('year').value)||undefined,km:Number($('mileage').value)||undefined,fuel:$('fuel').value,transmission:$('trans').value,kw:Number($('power').value)||undefined};
+ return {make:$('make').value,year:Number($('year').value)||undefined,km:Number($('mileage').value)||undefined,fuel:$('fuel').value,transmission:$('trans').value,kw:Number($('power').value)||undefined,cc:Number($('engine').value)||undefined};
 }
 function renderReportLabels(){
  const s=u();
@@ -132,6 +163,7 @@ function analyse(quiet){
  $('carSummary').textContent=optText('make')+' '+optText('model');
  const equipment=selectedEquipment();
  const meta=[$('year').value,Number($('mileage').value).toLocaleString(locale())+' km',optText('country'),optText('fuel'),optText('trans')];
+ if($('engine').value)meta.push(ccText(Number($('engine').value)));
  if($('color').value)meta.push(optText('color'));
  if(mode==='sell'){
   if($('trim').value)meta.push($('trim').value);
@@ -152,7 +184,7 @@ function analyse(quiet){
 }
 function copySummary(){
  const L=u().sum,na=L.na,v=id=>$(id).value||na;
- const lines=[L.title,L.market+': '+optText('country'),L.mode+': '+(mode==='sell'?L.sell:L.buy),L.vehicle+': '+optText('make')+' '+optText('model'),L.year+': '+$('year').value,L.mileage+': '+$('mileage').value+' km',L.fuel+': '+optText('fuel'),L.trans+': '+optText('trans'),L.power+': '+v('power')+' kW / '+v('powerHp')+' KM',L.color+': '+($('color').value?optText('color'):na)];
+ const lines=[L.title,L.market+': '+optText('country'),L.mode+': '+(mode==='sell'?L.sell:L.buy),L.vehicle+': '+optText('make')+' '+optText('model'),L.year+': '+$('year').value,L.mileage+': '+$('mileage').value+' km',L.fuel+': '+optText('fuel'),L.trans+': '+optText('trans'),L.power+': '+v('power')+' kW / '+v('powerHp')+' KM',L.engine+': '+($('engine').value?$('engine').value+' cm³':na),L.color+': '+($('color').value?optText('color'):na)];
  if(mode==='sell')lines.push(L.asking+': '+($('price').value?$('price').value+' EUR':na),L.vin+': '+v('vin'),L.pros+': '+v('sellerPros'),L.cons+': '+v('sellerCons'),L.trim+': '+v('trim'),L.equipment+': '+(selectedEquipment().join(', ')||na),L.service+': '+v('condition'));
  if(lastSummary){const st=lastSummary.result.stats;lines.push(L.ads+': '+st.n,L.median+': '+Math.round(st.median)+' EUR',L.range+': '+Math.round(st.min)+'–'+Math.round(st.max)+' EUR')}
  lines.push(L.note);
@@ -179,7 +211,7 @@ function parseMeta(str){
  try{raw=JSON.parse(str||'{}')}catch(e){return {}}
  if(!raw||typeof raw!=='object')return {};
  const out={};
- ['price','year','km','kw','hp'].forEach(k=>{if(typeof raw[k]==='number'&&Number.isFinite(raw[k]))out[k]=raw[k]});
+ ['price','year','km','kw','hp','cc'].forEach(k=>{if(typeof raw[k]==='number'&&Number.isFinite(raw[k]))out[k]=raw[k]});
  ['fuel','transmission','source','title','url'].forEach(k=>{if(typeof raw[k]==='string')out[k]=raw[k].slice(0,200)});
  return out;
 }
@@ -225,6 +257,7 @@ function collapseRow(i){
  const parts=['#'+i,money(price)];
  if(meta.year)parts.push(String(meta.year));
  if(Number.isFinite(meta.km))parts.push(meta.km.toLocaleString(locale())+' km');
+ if(meta.cc)parts.push(ccText(meta.cc));
  const warn=core.comparabilityWarnings(meta,target()).length>0;
  const sum=$('sum'+i);
  sum.className='comp-summary'+(warn?' warn':'');
@@ -255,6 +288,7 @@ function describeRow(i,d,fromSource){
  if(d.year)parts.push(s.year+' '+d.year);
  if(d.km!==undefined)parts.push(d.km.toLocaleString(locale())+' '+s.km);
  if(d.kw)parts.push(Math.round(d.kw)+' kW'+(d.hp?' / '+d.hp+' KM':''));
+ if(d.cc)parts.push(ccText(d.cc));
  if(d.fuel)parts.push(s.fuels[d.fuel]||d.fuel);
  if(d.transmission)parts.push(s.trans[d.transmission]||d.transmission);
  const warns=core.comparabilityWarnings(d,target()).map(w=>s.warn[w]);
@@ -272,14 +306,18 @@ function parseAdText(i){
 }
 
 // --- Comparison ---
-let lastSummary=null;
+let lastSummary=null,lastExcluded=[];
 function comparePrices(){
  const ads=readRows().map((r,k)=>{const meta=parseMeta(r.meta);return {index:k+1,link:r.link.trim(),price:Number(r.price),meta}}).filter(a=>Number.isFinite(a.price)&&a.price>0);
  const tgt=target(),adjust=$('adjustToggle').checked,withPrice=a=>Object.assign({},a.meta,{price:a.price});
- const model=adjust?core.depreciationModel(ads.map(withPrice)):null;
- ads.forEach(a=>{a.adjusted=core.adjustPrice(withPrice(a),tgt,model)});
- const result=core.summarizeComparison({prices:ads.map(a=>a.adjusted),mode,askingPrice:Number($('price').value)});
- lastSummary=result?{result,ads,model,adjust}:null;
+ // A different engine size or power is a different car: such ads are left out of the price.
+ ads.forEach(a=>{a.excludedFor=core.comparabilityWarnings(a.meta,tgt).filter(w=>w==='engine'||w==='power')});
+ const used=ads.filter(a=>!a.excludedFor.length);
+ lastExcluded=ads.filter(a=>a.excludedFor.length);
+ const model=adjust?core.depreciationModel(used.map(withPrice)):null;
+ used.forEach(a=>{a.adjusted=core.adjustPrice(withPrice(a),tgt,model)});
+ const result=core.summarizeComparison({prices:used.map(a=>a.adjusted),mode,askingPrice:Number($('price').value)});
+ lastSummary=result?{result,ads:used,model,adjust}:null;
  for(let i=1;$('link'+i);i++)collapseRow(i);
  renderComparison();
  saveState();
@@ -287,7 +325,12 @@ function comparePrices(){
 const fill=(text,values)=>text.replace(/\{(\w+)\}/g,(m,k)=>values[k]!==undefined?values[k]:m);
 function renderComparison(){
  const s=u(),out=$('manualResult');
- if(!lastSummary){out.textContent=s.noPrices;return}
+ const excludedLine=()=>el('div',{className:'excluded'},[el('strong',{textContent:s.excludedLabel}),lastExcluded.map(a=>'#'+a.index+' ('+money(a.price)+'): '+a.excludedFor.map(x=>s.warn[x]).join(', ')).join(' · ')]);
+ if(!lastSummary){
+  if(lastExcluded.length)out.replaceChildren(el('div',{textContent:s.allExcluded}),excludedLine());
+  else out.textContent=s.noPrices;
+  return;
+ }
  const {result,ads}=lastSummary,st=result.stats;
  const line=(label,value)=>el('div',{},[el('strong',{textContent:label}),value]);
  const nodes=[
@@ -297,6 +340,7 @@ function renderComparison(){
   line(s.count,String(st.n)),
  ];
  if(st.outliers.length)nodes.push(line(s.outliers,st.outliers.map(money).join(', ')));
+ if(lastExcluded.length)nodes.push(excludedLine());
  nodes.push(line(s.confidence,s.conf[result.confidence]+(result.highSpread?s.spread:'')));
  const {model}=lastSummary;
  if(model){
@@ -441,8 +485,11 @@ function closeSuggestions(){
 }
 function chooseSuggestion(i){
  const sug=suggestions[i];if(!sug)return;
- $('make').value=sug.make;setModels();$('model').value=sug.model;
- $('quickSearch').value=sug.make+' '+sug.model;closeSuggestions();saveState();$('year').focus();
+ $('make').value=sug.make;setModels();$('model').value=sug.model;suggestEngine();
+ $('quickSearch').value=sug.make+' '+sug.model;closeSuggestions();saveState();
+ $('quickSearchChosen').textContent='✓ '+u().quickChosen+sug.make+' '+sug.model;
+ // Close the phone keyboard; the make and model fields below are now filled.
+ $('quickSearch').blur();
 }
 function onQuickSearchKey(e){
  const open=!$('quickSearchList').classList.contains('hidden');
@@ -457,11 +504,11 @@ function onQuickSearchKey(e){
 
 // --- Saved progress (this browser only) ---
 const STORE_KEY='autovalue:v1';
-const FIELDS=['country','make','model','year','mileage','fuel','trans','powerUnit','powerEntry','color','price','vin','sellerPros','sellerCons','trim','condition'];
+const FIELDS=['country','make','model','year','mileage','fuel','trans','powerUnit','powerEntry','engine','color','price','vin','sellerPros','sellerCons','trim','condition'];
 let restoring=true,saveTimer;
 function saveState(){
  if(restoring)return;
- const state={v:1,lang:lang(),mode,step,compCount,garageId:currentGarageId||undefined,demo:isDemo||undefined,compared:!!lastSummary,adjust:$('adjustToggle').checked,fields:{},equipment:[...document.querySelectorAll('.equipment-check:checked')].map(c=>c.value),rows:readRows()};
+ const state={v:1,lang:lang(),mode,step,compCount,engineAuto:engineAuto||undefined,garageId:currentGarageId||undefined,demo:isDemo||undefined,compared:!!lastSummary,adjust:$('adjustToggle').checked,fields:{},equipment:[...document.querySelectorAll('.equipment-check:checked')].map(c=>c.value),rows:readRows()};
  FIELDS.forEach(id=>{state.fields[id]=$(id).value});
  try{localStorage.setItem(STORE_KEY,JSON.stringify(state))}catch(e){}
 }
@@ -472,7 +519,7 @@ function restoreState(){
  if(!st||st.v!==1)return;
  try{
   if(translations[st.lang])$('lang').value=st.lang;
-  currentGarageId=typeof st.garageId==='string'?st.garageId:null;isDemo=!!st.demo;
+  currentGarageId=typeof st.garageId==='string'?st.garageId:null;isDemo=!!st.demo;engineAuto=!!st.engineAuto;
   if(st.mode==='buy'||st.mode==='sell'){mode=st.mode;document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('selected',x.dataset.mode===mode));updateModeFields()}
   const f=st.fields||{},set=id=>{if(typeof f[id]==='string')$(id).value=f[id]};
   set('country');set('make');setModels();
@@ -623,6 +670,7 @@ function readIncomingAd(){
 
 // --- Init ---
 populateMakes();
+populateEngines();
 populateYears();
 setModels();
 $('make').addEventListener('change',setModels);
@@ -642,7 +690,15 @@ $('addComp').addEventListener('click',addRow);
 $('loadListings').addEventListener('click',loadListings);
 $('quickSearch').addEventListener('input',renderSuggestions);
 $('quickSearch').addEventListener('keydown',onQuickSearchKey);
-$('quickSearch').addEventListener('blur',closeSuggestions);
+// Closing a moment later lets a tap on a suggestion land first (iOS blurs the field before the click).
+$('quickSearch').addEventListener('blur',()=>setTimeout(closeSuggestions,250));
+$('make').addEventListener('change',()=>{$('quickSearchChosen').textContent=''});
+$('model').addEventListener('change',()=>{$('quickSearchChosen').textContent=''});
+$('fuel').addEventListener('change',()=>{updateEngineField();suggestEngine()});
+$('engine').addEventListener('change',()=>{engineAuto=false;suggestEngine()});
+['make','model','year'].forEach(id=>$(id).addEventListener('change',suggestEngine));
+$('powerEntry').addEventListener('input',suggestEngine);
+$('powerUnit').addEventListener('change',suggestEngine);
 $('print').addEventListener('click',()=>window.print());
 $('reset').addEventListener('click',resetAll);
 $('demo').addEventListener('click',loadDemo);

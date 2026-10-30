@@ -80,6 +80,22 @@ function extractPower(t){
  return d;
 }
 
+// Engine displacement in cm³, from "Prostornina motorja: 1.798 ccm", "Hubraum 1598 cm³" or a model
+// name such as "1.4 i-VTEC" / "2,0 TDI". Values below 10 are litres.
+const CC_LABEL='prostornina(?:\\s*motorja)?|delovna\\s*prostornina|hubraum|cilindrata|engine\\s*size|displacement|capacity|obujam(?:\\s*motora)?|radni\\s*obujam|cylindr[ée]e';
+const ENGINE_WORDS='TDI|TSI|TFSI|FSI|CDI|CRDi|TDCi|dCi|HDi|BlueHDi|JTDm?|MultiJet|i-?VTEC|VTEC|i-?DTEC|i-?CTDi|MPI|T?-?GDI|VVT-?i|D-4D|SkyActiv-?[GDX]?|EcoBoost|PureTech|TCe|e-?HDi|TwinAir|MultiAir|THP|VTi|16V|8V|turbo|benzin|bencin|dizel|diesel|[idDT]';
+function extractDisplacement(t){
+ t=String(t||'');
+ const ok=cc=>cc>=500&&cc<=8500?Math.round(cc):undefined;
+ let m=t.match(new RegExp('(?:'+CC_LABEL+')[^0-9\\n]{0,25}('+NUM+')\\s*(ccm|cm3|cm³|ccm³|cc|l\\b)?','i'));
+ if(m){const v=parseNumber(m[1]);const cc=v<10?v*1000:v;if(ok(cc))return ok(cc)}
+ m=t.match(/\b(\d{3,4}|\d\.\d{3})\s*(?:ccm|cm3|cm³|ccm³|cc)\b/i);
+ if(m){const v=parseNumber(m[1]);if(ok(v))return ok(v)}
+ // "l/100 km" is fuel consumption, not engine size.
+ m=t.match(new RegExp('(?:^|[\\s(/])(\\d[.,]\\d\\d?)\\s*(?:l\\b(?!\\s*/)|(?:'+ENGINE_WORDS+')\\b)'));
+ if(m){const v=parseNumber(m[1].replace(',','.'));if(v>=0.6&&v<=8.5)return Math.round(v*1000)}
+}
+
 const FUEL_RULES=[
  ['Plug-in hybrid',/plug-?in|\bPHEV\b|priključn/i],
  ['Hybrid',/hybrid|hibrid|\bHEV\b|ibrida/i],
@@ -125,10 +141,49 @@ function extractAd(text){
  Object.assign(d,extractPower(t));
  const fuel=extractFuel(t);if(fuel)d.fuel=fuel;
  const trans=extractTransmission(t);if(trans)d.transmission=trans;
+ const cc=extractDisplacement(t);if(cc)d.cc=cc;
  return d;
 }
 
-// Lists how a comparable ad differs from the user's car: 'year','km','fuel','transmission','power'.
+// Engines whose marketed size differs from plain rounding to 100 cm³. Everything else rounds
+// mathematically (1300–1349 → 1300, 1350–1449 → 1400).
+const ENGINE_EXCEPTIONS=[
+ // Honda 1339 cm³ petrol (Civic 2006–2011, Jazz, City) is sold as 1.4; the 1.3 IMA hybrids are 1.3.
+ {makes:['Honda'],cc:[1339],fuelNot:'Hybrid',size:1400},
+ // 1.3 Multijet / CDTI / DDiS diesel used by Fiat, Opel, Suzuki, Lancia, Alfa Romeo and others.
+ {cc:[1248],fuel:'Diesel',size:1300},
+ // Renault/Dacia/Nissan 1.2 16V petrol.
+ {makes:['Renault','Dacia','Nissan'],cc:[1149],size:1200},
+ // Mercedes-Benz 2.2 CDI / 220 d.
+ {makes:['Mercedes-Benz'],cc:[2143,2148,2151],size:2200},
+ // Mitsubishi 2.2 DI-D (Outlander, ASX).
+ {makes:['Mitsubishi'],cc:[2268],size:2200},
+];
+function engineSize(cc,make,fuel){
+ if(!(cc>0))return undefined;
+ const hit=ENGINE_EXCEPTIONS.find(e=>e.cc.some(x=>Math.abs(x-cc)<=2)&&(!e.makes||e.makes.includes(make))&&(!e.fuel||e.fuel===fuel)&&(!e.fuelNot||e.fuelNot!==fuel));
+ return hit?hit.size:Math.round(cc/100)*100;
+}
+
+// Engine sizes that fit the entered power, fuel, make and year, from a table of common engines.
+// Returns [{size, cc, names}] with one entry per engine size, most likely first (fewest names last).
+function suggestEngines(car,engines){
+ const fuel=car.fuel==='LPG'?'Petrol':car.fuel;
+ if(!(car.kw>0)||!car.make||!fuel)return [];
+ const bySize=new Map();
+ (engines||[]).forEach(e=>{
+  if(e.fuel!==fuel||!e.makes.includes(car.make))return;
+  if(!e.kw.some(k=>Math.abs(k-car.kw)<=1))return;
+  if(car.year&&e.years&&(car.year<e.years[0]-1||car.year>e.years[1]+1))return;
+  const size=engineSize(e.cc,car.make,fuel);
+  const hit=bySize.get(size)||{size,cc:e.cc,names:[]};
+  if(!hit.names.includes(e.name))hit.names.push(e.name);
+  bySize.set(size,hit);
+ });
+ return [...bySize.values()].sort((a,b)=>a.size-b.size);
+}
+
+// Lists how a comparable ad differs from the user's car: 'year','km','fuel','transmission','power','engine'.
 function comparabilityWarnings(ad,target){
  const w=[];if(!ad||!target)return w;
  if(ad.year&&target.year&&Math.abs(ad.year-target.year)>1)w.push('year');
@@ -136,7 +191,11 @@ function comparabilityWarnings(ad,target){
  const known=v=>v&&v!=='Other';
  if(known(ad.fuel)&&known(target.fuel)&&ad.fuel!==target.fuel)w.push('fuel');
  if(known(ad.transmission)&&known(target.transmission)&&ad.transmission!==target.transmission)w.push('transmission');
- if(ad.kw&&target.kw&&Math.abs(ad.kw-target.kw)/target.kw>0.15)w.push('power');
+ // Power must match the user's car; ±2 kW only absorbs rounding between KM/PS and kW.
+ if(ad.kw&&target.kw&&Math.abs(ad.kw-target.kw)>2)w.push('power');
+ // The user picks a size to the nearest 100 cm³; the ad's exact figure (1798) must give the same
+ // size (1800), using the manufacturer's size where it differs (Honda 1339 → 1400).
+ if(ad.cc&&target.cc&&engineSize(ad.cc,target.make,ad.fuel||target.fuel)!==target.cc)w.push('engine');
  return w;
 }
 
@@ -296,6 +355,9 @@ function buildVehicleQuery(v){
  return parts.join(' ');
 }
 
-const api={KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
+// Common engine sizes offered in the form (cm³, shown as litres).
+const ENGINE_SIZES=[600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2700,2800,2900,3000,3200,3500,3700,4000,4200,4400,4700,5000,5500,6000,6500];
+
+const api={ENGINE_SIZES,extractDisplacement,engineSize,suggestEngines,KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.AVCore=api;
 })(this);

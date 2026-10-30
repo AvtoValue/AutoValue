@@ -36,6 +36,11 @@ async function openPage(t, options = {}) {
   return { page, context };
 }
 
+// Clicks a control that reloads the page (new valuation, garage, example) and waits for the new page.
+async function clickAndReload(page, selector) {
+  await Promise.all([page.waitForEvent('load'), page.click(selector)]);
+}
+
 const adText = (price, year, km, extra = '') =>
   `Cena: ${price.toLocaleString('de-DE')} €\nPrva registracija: ${year}\nPrevoženi km: ${km.toLocaleString('de-DE')} km\nGorivo: dizel\nMenjalnik: ročni\n${extra}`;
 
@@ -83,6 +88,80 @@ test('buyer flow: quick search, ad parsing, adjustment, chart and folded rows', 
   assert.ok(await page.isVisible('#text2'));
 });
 
+test('on a phone, tapping a suggestion fills make and model; engine size is compared', async t => {
+  const { devices } = require('playwright');
+  const { page } = await openPage(t, { ...devices['iPhone 13'], locale: 'sl-SI' });
+  await page.tap('#next');
+  await page.tap('#quickSearch');
+  await page.keyboard.type('honda civic');
+  assert.deepEqual(await page.$$eval('#quickSearchList li', l => l.map(x => x.textContent)), ['Honda Civic', 'Honda Civic Type R', 'Honda Civic Tourer']);
+  await page.tap('#quickSearchList li:nth-child(2)');
+  assert.equal(await page.inputValue('#model'), 'Civic Type R');
+  assert.match(await page.textContent('#quickSearchChosen'), /Izbrano: Honda Civic Type R/);
+
+  await page.selectOption('#model', 'Civic');
+  await page.selectOption('#fuel', 'Petrol');
+  assert.equal(await page.textContent('#engine option[value="1400"]'), '1400 cm³');
+  await page.selectOption('#engine', '1400');
+  await page.selectOption('#fuel', 'Electric');
+  assert.ok(await page.isHidden('#engineField'));
+  await page.selectOption('#fuel', 'Petrol');
+  await page.selectOption('#engine', '1400');
+  await page.selectOption('#year', '2006');
+  await page.fill('#mileage', '180000');
+  await page.tap('#analyse');
+  assert.match(await page.textContent('#metaSummary'), /1400 cm³/);
+  await page.fill('#text1', 'Honda Civic 1.8 i-VTEC\nCena: 5.900 €\nLetnik: 2006\nPrevoženi km: 175.000\nGorivo: bencin');
+  assert.match(await page.textContent('#info1'), /1800 cm³ .*⚠ druga prostornina motorja/);
+  await page.fill('#text2', 'Honda Civic\nProstornina motorja: 1.398 ccm\nCena: 4.900 €\nLetnik: 2006\nPrevoženi km: 190.000\nGorivo: bencin');
+  assert.match(await page.textContent('#info2'), /1398 cm³/);
+  assert.doesNotMatch(await page.textContent('#info2'), /⚠/);
+  assert.doesNotMatch(await page.getAttribute('#searchLinks a', 'href'), /1400|1%2C4|1\.4/);
+  // Honda sells its 1339 cm³ engine as 1.4, so it matches; the 1.8 ad is left out of the price.
+  await page.fill('#text3', 'Honda Civic\nProstornina motorja: 1.339 ccm\nCena: 5.300 €\nLetnik: 2006\nPrevoženi km: 170.000\nGorivo: bencin');
+  assert.doesNotMatch(await page.textContent('#info3'), /⚠/);
+  await page.tap('#comparePrices');
+  const result = await page.innerText('#manualResult');
+  assert.match(result, /Število upoštevanih oglasov: 2/);
+  assert.match(result, /Ni upoštevano \(drug motor ali moč\): #1/);
+});
+
+test('engine size is suggested from power, and a manual choice is kept', async t => {
+  const { page } = await openPage(t);
+  await page.click('#next');
+  await page.fill('#quickSearch', 'honda civic');
+  await page.keyboard.press('Enter');
+  await page.selectOption('#year', '2006');
+  await page.selectOption('#fuel', 'Petrol');
+  await page.fill('#powerEntry', '73');
+  assert.equal(await page.inputValue('#engine'), '1400');
+  assert.match(await page.textContent('#engineHint'), /Izbrano glede na moč: 1400 cm³/);
+  // A different power replaces a size the app chose itself.
+  await page.fill('#powerEntry', '103');
+  assert.equal(await page.inputValue('#engine'), '1800');
+  // A size the user picks stays, and the hint offers the usual one.
+  await page.selectOption('#engine', '1600');
+  await page.fill('#powerEntry', '73');
+  assert.equal(await page.inputValue('#engine'), '1600');
+  assert.match(await page.textContent('#engineHint'), /običajno 1400 cm³/);
+  await page.click('#engineHint button');
+  assert.equal(await page.inputValue('#engine'), '1400');
+
+  // Several engines with the same power: offer a choice.
+  await page.fill('#quickSearch', 'volkswagen golf');
+  await page.keyboard.press('Enter');
+  await page.selectOption('#engine', '');
+  await page.selectOption('#year', '2009');
+  await page.selectOption('#fuel', 'Diesel');
+  await page.fill('#powerEntry', '74');
+  assert.equal(await page.inputValue('#engine'), '1900');
+  await page.fill('#powerEntry', '77');
+  assert.equal(await page.inputValue('#engine'), '', 'an automatic choice is cleared when several engines fit');
+  assert.deepEqual(await page.$$eval('#engineHint button', b => b.map(x => x.textContent)), ['Uporabi 1600 cm³ · 1.6 TDI', 'Uporabi 1900 cm³ · 1.9 TDI']);
+  await page.selectOption('#year', '2006');
+  assert.equal(await page.inputValue('#engine'), '1900');
+});
+
 test('seller gets a verdict on the asking price', async t => {
   const { page } = await openPage(t);
   await enterCar(page, { sell: true, price: '19500' });
@@ -102,12 +181,10 @@ test('entries survive a reload, and a new valuation keeps the old one in My gara
   assert.equal(await page.textContent('#stepLabel'), 'KORAK 3 · POROČILO');
   assert.match(await page.innerText('#manualResult'), /Število upoštevanih oglasov: 3/);
 
-  await page.click('#reset');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '#reset');
   assert.equal(await page.textContent('#stepLabel'), 'KORAK 1 · IZBIRA TRGA');
   assert.deepEqual(await page.$$eval('.garage-item b', b => b.map(x => x.textContent)), ['Škoda Octavia 2018']);
-  await page.click('.garage-item .btn');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '.garage-item .btn');
   assert.equal(await page.textContent('#carSummary'), 'Škoda Octavia');
   assert.match(await page.innerText('#manualResult'), /Število upoštevanih oglasov: 3/);
 });
@@ -122,18 +199,19 @@ test('a shared link rebuilds the report elsewhere without the VIN', async t => {
   await addAds(page, SIX_ADS.slice(0, 4));
   await page.click('#comparePrices');
   await page.click('#share');
+  await page.waitForFunction(() => /kopirana/.test(document.getElementById('notice').textContent));
   const url = await page.evaluate(() => navigator.clipboard.readText());
   assert.match(url, /#r=[A-Za-z0-9_-]+$/);
 
   const { page: other } = await openPage(t);
   await other.goto(url);
-  await other.waitForLoadState('load');
-  assert.equal(await other.textContent('#carSummary'), 'Škoda Octavia');
+  // Opening the link reloads the page into the shared report.
+  await other.waitForFunction(() => document.getElementById('carSummary').textContent === 'Škoda Octavia');
   assert.equal(await other.inputValue('#vin'), '');
   assert.match(await other.innerText('#manualResult'), /Število upoštevanih oglasov: 4/);
 
   await other.goto(base + '#r=broken');
-  assert.match(await other.textContent('#notice'), /poškodovana/);
+  await other.waitForFunction(() => /poškodovana/.test(document.getElementById('notice').textContent));
 });
 
 test('a shared link with damaged ad data still opens the report', async t => {
@@ -142,21 +220,18 @@ test('a shared link with damaged ad data still opens the report', async t => {
   const payload = { v: 1, fields: { make: 'BMW', model: 'M3', year: '2019', mileage: '50000' },
     rows: [{ price: '30000', meta: '{broken' }, { price: '31000', meta: JSON.stringify({ km: null, year: 'x' }) }, { link: 'javascript:alert(1)', price: '32000', meta: JSON.stringify({ km: 40000 }) }] };
   await page.goto(base + '#r=' + encodeState(payload));
-  await page.waitForLoadState('load');
-  assert.equal(await page.textContent('#carSummary'), 'BMW M3');
+  await page.waitForFunction(() => document.getElementById('carSummary').textContent === 'BMW M3');
   assert.match(await page.innerText('#manualResult'), /3/);
   assert.equal(await page.inputValue('#link3'), '');
 });
 
 test('the example opens a complete report and is not saved to the garage', async t => {
   const { page } = await openPage(t);
-  await page.click('#demo');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '#demo');
   assert.ok(await page.isVisible('#demoBanner'));
   assert.ok(await page.isVisible('#chart svg'));
   assert.ok(await page.isHidden('#saveGarage'));
-  await page.click('#reset');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '#reset');
   assert.ok(await page.isHidden('#garage'));
 });
 
@@ -174,8 +249,7 @@ test('ads arrive from the extension and from the share menu', async t => {
 
 test('every language translates the main buttons', async t => {
   const { page } = await openPage(t);
-  await page.click('#demo');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '#demo');
   const seen = new Set();
   for (const lang of ['en', 'sl', 'de', 'it', 'hr']) {
     await page.selectOption('#lang', lang);

@@ -18,7 +18,7 @@ Gorivo: dizel motor
 Moč motorja: 85 kW (116 KM)
 Menjalnik: ročni menjalnik (5 pr.)
 Električni pomik stekel`);
-  assert.deepEqual(d, { price: 12990, year: 2017, km: 148000, kw: 85, hp: 116, fuel: 'Diesel', transmission: 'Manual' });
+  assert.deepEqual(d, { price: 12990, year: 2017, km: 148000, kw: 85, hp: 116, fuel: 'Diesel', transmission: 'Manual', cc: 1600 });
 });
 
 test('extractAd reads an English AutoScout24 style ad', () => {
@@ -56,7 +56,7 @@ test('extractAd returns an empty object for text without data', () => {
 
 test('comparabilityWarnings flags year, mileage, fuel, transmission and power differences', () => {
   const tgt = { year: 2018, km: 100000, fuel: 'Diesel', transmission: 'Manual', kw: 100 };
-  assert.deepEqual(core.comparabilityWarnings({ year: 2019, km: 140000, fuel: 'Diesel', transmission: 'Manual', kw: 110 }, tgt), []);
+  assert.deepEqual(core.comparabilityWarnings({ year: 2019, km: 140000, fuel: 'Diesel', transmission: 'Manual', kw: 101 }, tgt), []);
   assert.deepEqual(core.comparabilityWarnings({ year: 2015, km: 200000, fuel: 'Petrol', transmission: 'Automatic', kw: 140 }, tgt), ['year', 'km', 'fuel', 'transmission', 'power']);
   assert.deepEqual(core.comparabilityWarnings({ fuel: 'Petrol' }, { fuel: 'Other' }), []);
 });
@@ -185,4 +185,75 @@ test('marketForLocale maps browser languages to markets', () => {
   assert.equal(core.marketForLocale('ja-JP'), null);
   assert.equal(core.marketForLocale('en-US'), null);
   assert.equal(core.marketForLocale(''), null);
+});
+
+test('extractDisplacement reads engine size from labels, cm³ values and model names', () => {
+  const cases = {
+    'Honda Civic 1.4 i-VTEC Sport': 1400, 'Honda Civic 1.8 i-VTEC Type S': 1800,
+    'Prostornina motorja: 1.798 ccm': 1798, 'Hubraum 1.598 cm³': 1598, 'Cilindrata 1968 cc': 1968,
+    'obujam motora 1.995 cm3': 1995, 'VW Golf 2,0 TDI': 2000, 'Fiat 500 0.9 TwinAir': 900,
+    'Toyota Yaris 1.33 VVT-i': 1330, 'Renault Clio 1.5 dCi': 1500, 'motor 2.5 l': 2500,
+  };
+  for (const [text, cc] of Object.entries(cases)) assert.equal(core.extractDisplacement(text), cc, text);
+  for (const text of ['Cena 1.400 €', 'Poraba 5.4 l/100 km', 'BMW 320d', 'nothing']) assert.equal(core.extractDisplacement(text), undefined, text);
+});
+
+test('extractAd includes engine size and flags a different engine', () => {
+  const d = core.extractAd('Honda Civic 1.8 i-VTEC\nCena: 6.900 €\nLetnik: 2006\nPrevoženi km: 180.000\nGorivo: bencin\nPoraba 6,9 l/100 km');
+  assert.equal(d.cc, 1800);
+  assert.deepEqual(core.comparabilityWarnings(d, { year: 2006, cc: 1400 }), ['engine']);
+  assert.deepEqual(core.comparabilityWarnings({ cc: 1398 }, { cc: 1400 }), []);
+  // Engine size is left out of searches: portals list exact figures (1798) that "1.8" would miss.
+  assert.doesNotMatch(core.buildVehicleQuery({ make: 'Honda', model: 'Civic', cc: 1800 }), /1[.,]8|1800/);
+  // The ad's exact figure must round to the chosen size (nearest 100 cm³).
+  const exact = cc => core.extractAd('Prostornina motorja: ' + cc + ' ccm');
+  assert.deepEqual(core.comparabilityWarnings(exact(1798), { cc: 1800 }), []);
+  assert.deepEqual(core.comparabilityWarnings(exact(1398), { cc: 1400 }), []);
+  for (const [cc, target] of [[1493, 1400], [1339, 1400], [1498, 1400], [1598, 1800], [1851, 1800]])
+    assert.deepEqual(core.comparabilityWarnings(exact(cc), { cc: target }), ['engine'], cc + ' vs ' + target);
+  assert.deepEqual(core.comparabilityWarnings(core.extractAd('Civic 1.5 i-VTEC'), { cc: 1400 }), ['engine']);
+});
+
+test('engineSize rounds mathematically except for engines sold under another size', () => {
+  assert.equal(core.engineSize(1349, 'Toyota', 'Petrol'), 1300);
+  assert.equal(core.engineSize(1350, 'Toyota', 'Petrol'), 1400);
+  assert.equal(core.engineSize(1798, 'Honda', 'Petrol'), 1800);
+  assert.equal(core.engineSize(1339, 'Honda', 'Petrol'), 1400);
+  assert.equal(core.engineSize(1339, 'Honda', 'Hybrid'), 1300);
+  assert.equal(core.engineSize(1248, 'Fiat', 'Diesel'), 1300);
+  assert.equal(core.engineSize(1248, 'Hyundai', 'Petrol'), 1200);
+  assert.equal(core.engineSize(2143, 'Mercedes-Benz', 'Diesel'), 2200);
+  assert.deepEqual(core.comparabilityWarnings({ cc: 1339, fuel: 'Petrol' }, { make: 'Honda', cc: 1400, fuel: 'Petrol' }), []);
+  assert.deepEqual(core.comparabilityWarnings({ cc: 1339, fuel: 'Petrol' }, { make: 'Toyota', cc: 1400, fuel: 'Petrol' }), ['engine']);
+});
+
+test('power must match within 2 kW', () => {
+  assert.deepEqual(core.comparabilityWarnings({ kw: 85.3 }, { kw: 85 }), []);
+  assert.deepEqual(core.comparabilityWarnings({ kw: 77 }, { kw: 85 }), ['power']);
+  assert.deepEqual(core.comparabilityWarnings({ kw: 110 }, { kw: 103 }), ['power']);
+});
+
+const { engines } = require('../public/js/engines.js');
+const sizes = car => core.suggestEngines(car, engines).map(o => o.size);
+
+test('suggestEngines finds the engine size from make, fuel, power and year', () => {
+  assert.deepEqual(sizes({ make: 'Honda', fuel: 'Petrol', kw: 73, year: 2006 }), [1400]);
+  assert.deepEqual(sizes({ make: 'Honda', fuel: 'Petrol', kw: 103, year: 2008 }), [1800]);
+  assert.deepEqual(sizes({ make: 'Volkswagen', fuel: 'Diesel', kw: 77, year: 2006 }), [1900]);
+  assert.deepEqual(sizes({ make: 'Volkswagen', fuel: 'Diesel', kw: 77, year: 2012 }), [1600]);
+  assert.deepEqual(sizes({ make: 'Volkswagen', fuel: 'Diesel', kw: 77, year: 2009 }), [1600, 1900]);
+  assert.deepEqual(sizes({ make: 'Škoda', fuel: 'Diesel', kw: 110.3, year: 2016 }), [2000]);
+  assert.deepEqual(sizes({ make: 'Fiat', fuel: 'Diesel', kw: 70 }), [1300]);
+  assert.deepEqual(sizes({ make: 'Renault', fuel: 'LPG', kw: 55 }), [1000, 1200]);
+  assert.deepEqual(sizes({ make: 'Tesla', fuel: 'Electric', kw: 200 }), []);
+  assert.deepEqual(sizes({ make: 'Honda', fuel: 'Petrol' }), []);
+});
+
+test('every engine in the table belongs to a known make, fuel and size option', () => {
+  const { makes } = require('../public/js/data.js');
+  for (const e of engines) {
+    for (const m of e.makes) assert.ok(makes.includes(m), e.name + ': ' + m);
+    assert.ok(['Petrol', 'Diesel', 'Hybrid', 'Plug-in hybrid'].includes(e.fuel), e.name);
+    assert.ok(core.ENGINE_SIZES.includes(core.engineSize(e.cc, e.makes[0], e.fuel)), e.name + ' ' + e.cc);
+  }
 });
