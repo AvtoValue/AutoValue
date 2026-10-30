@@ -192,7 +192,6 @@ function parseMeta(str){
  if(!raw||typeof raw!=='object')return {};
  const out={};
  ['price','year','km','kw','hp','cc'].forEach(k=>{if(typeof raw[k]==='number'&&Number.isFinite(raw[k]))out[k]=raw[k]});
- if(raw.ccExact===true)out.ccExact=true;
  ['fuel','transmission','source','title','url'].forEach(k=>{if(typeof raw[k]==='string')out[k]=raw[k].slice(0,200)});
  return out;
 }

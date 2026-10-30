@@ -80,22 +80,21 @@ function extractPower(t){
  return d;
 }
 
-// Engine displacement in cm³. "exact" is true for figures such as "Prostornina motorja: 1.798 ccm" or
-// "Hubraum 1598 cm³" (what portals list), false for a rounded size from a model name such as
-// "1.4 i-VTEC" / "2,0 TDI". Values below 10 are litres.
+// Engine displacement in cm³, from "Prostornina motorja: 1.798 ccm", "Hubraum 1598 cm³" or a model
+// name such as "1.4 i-VTEC" / "2,0 TDI". Values below 10 are litres.
 const CC_LABEL='prostornina(?:\\s*motorja)?|delovna\\s*prostornina|hubraum|cilindrata|engine\\s*size|displacement|capacity|obujam(?:\\s*motora)?|radni\\s*obujam|cylindr[ée]e';
 const ENGINE_WORDS='TDI|TSI|TFSI|FSI|CDI|CRDi|TDCi|dCi|HDi|BlueHDi|JTDm?|MultiJet|i-?VTEC|VTEC|i-?DTEC|i-?CTDi|MPI|T?-?GDI|VVT-?i|D-4D|SkyActiv-?[GDX]?|EcoBoost|PureTech|TCe|e-?HDi|TwinAir|MultiAir|THP|VTi|16V|8V|turbo|benzin|bencin|dizel|diesel|[idDT]';
-function displacementInfo(t){
+function extractDisplacement(t){
+ t=String(t||'');
  const ok=cc=>cc>=500&&cc<=8500?Math.round(cc):undefined;
  let m=t.match(new RegExp('(?:'+CC_LABEL+')[^0-9\\n]{0,25}('+NUM+')\\s*(ccm|cm3|cm³|ccm³|cc|l\\b)?','i'));
- if(m){const v=parseNumber(m[1]);const cc=v<10?v*1000:v;if(ok(cc))return {cc:ok(cc),exact:v>=10}}
+ if(m){const v=parseNumber(m[1]);const cc=v<10?v*1000:v;if(ok(cc))return ok(cc)}
  m=t.match(/\b(\d{3,4}|\d\.\d{3})\s*(?:ccm|cm3|cm³|ccm³|cc)\b/i);
- if(m){const v=parseNumber(m[1]);if(ok(v))return {cc:ok(v),exact:true}}
+ if(m){const v=parseNumber(m[1]);if(ok(v))return ok(v)}
  // "l/100 km" is fuel consumption, not engine size.
  m=t.match(new RegExp('(?:^|[\\s(/])(\\d[.,]\\d\\d?)\\s*(?:l\\b(?!\\s*/)|(?:'+ENGINE_WORDS+')\\b)'));
- if(m){const v=parseNumber(m[1].replace(',','.'));if(v>=0.6&&v<=8.5)return {cc:Math.round(v*1000),exact:false}}
+ if(m){const v=parseNumber(m[1].replace(',','.'));if(v>=0.6&&v<=8.5)return Math.round(v*1000)}
 }
-const extractDisplacement=t=>(displacementInfo(String(t||''))||{}).cc;
 
 const FUEL_RULES=[
  ['Plug-in hybrid',/plug-?in|\bPHEV\b|priključn/i],
@@ -142,7 +141,7 @@ function extractAd(text){
  Object.assign(d,extractPower(t));
  const fuel=extractFuel(t);if(fuel)d.fuel=fuel;
  const trans=extractTransmission(t);if(trans)d.transmission=trans;
- const disp=displacementInfo(t);if(disp){d.cc=disp.cc;if(disp.exact)d.ccExact=true}
+ const cc=extractDisplacement(t);if(cc)d.cc=cc;
  return d;
 }
 
@@ -155,9 +154,9 @@ function comparabilityWarnings(ad,target){
  if(known(ad.fuel)&&known(target.fuel)&&ad.fuel!==target.fuel)w.push('fuel');
  if(known(ad.transmission)&&known(target.transmission)&&ad.transmission!==target.transmission)w.push('transmission');
  if(ad.kw&&target.kw&&Math.abs(ad.kw-target.kw)/target.kw>0.15)w.push('power');
- // The user picks a rounded size (1800); portals list the real one (1798, or 1493 for some "1.4"
- // engines), so exact figures get ±100 cm³. Sizes from model names are rounded already.
- if(ad.cc&&target.cc&&Math.abs(ad.cc-target.cc)>(ad.ccExact?100:50))w.push('engine');
+ // The user picks a size to the nearest 100 cm³; the ad's exact figure (1798) must round to the
+ // same value (1800). 1339 or 1493 do not count as 1400.
+ if(ad.cc&&target.cc&&Math.round(ad.cc/100)!==Math.round(target.cc/100))w.push('engine');
  return w;
 }
 

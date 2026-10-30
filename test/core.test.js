@@ -202,16 +202,14 @@ test('extractAd includes engine size and flags a different engine', () => {
   const d = core.extractAd('Honda Civic 1.8 i-VTEC\nCena: 6.900 €\nLetnik: 2006\nPrevoženi km: 180.000\nGorivo: bencin\nPoraba 6,9 l/100 km');
   assert.equal(d.cc, 1800);
   assert.deepEqual(core.comparabilityWarnings(d, { year: 2006, cc: 1400 }), ['engine']);
-  assert.deepEqual(core.comparabilityWarnings({ cc: 1398, ccExact: true }, { cc: 1400 }), []);
+  assert.deepEqual(core.comparabilityWarnings({ cc: 1398 }, { cc: 1400 }), []);
   // Engine size is left out of searches: portals list exact figures (1798) that "1.8" would miss.
   assert.doesNotMatch(core.buildVehicleQuery({ make: 'Honda', model: 'Civic', cc: 1800 }), /1[.,]8|1800/);
-  // Exact portal figures match the rounded size the user picked, within 100 cm³.
+  // The ad's exact figure must round to the chosen size (nearest 100 cm³).
   const exact = cc => core.extractAd('Prostornina motorja: ' + cc + ' ccm');
-  assert.equal(exact(1798).ccExact, true);
   assert.deepEqual(core.comparabilityWarnings(exact(1798), { cc: 1800 }), []);
-  assert.deepEqual(core.comparabilityWarnings(exact(1493), { cc: 1400 }), []);
-  assert.deepEqual(core.comparabilityWarnings(exact(1339), { cc: 1400 }), []);
-  assert.deepEqual(core.comparabilityWarnings(exact(1598), { cc: 1800 }), ['engine']);
-  // A rounded size from the model name must match the chosen size.
+  assert.deepEqual(core.comparabilityWarnings(exact(1398), { cc: 1400 }), []);
+  for (const [cc, target] of [[1493, 1400], [1339, 1400], [1498, 1400], [1598, 1800], [1851, 1800]])
+    assert.deepEqual(core.comparabilityWarnings(exact(cc), { cc: target }), ['engine'], cc + ' vs ' + target);
   assert.deepEqual(core.comparabilityWarnings(core.extractAd('Civic 1.5 i-VTEC'), { cc: 1400 }), ['engine']);
 });

@@ -36,6 +36,11 @@ async function openPage(t, options = {}) {
   return { page, context };
 }
 
+// Clicks a control that reloads the page (new valuation, garage, example) and waits for the new page.
+async function clickAndReload(page, selector) {
+  await Promise.all([page.waitForEvent('load'), page.click(selector)]);
+}
+
 const adText = (price, year, km, extra = '') =>
   `Cena: ${price.toLocaleString('de-DE')} €\nPrva registracija: ${year}\nPrevoženi km: ${km.toLocaleString('de-DE')} km\nGorivo: dizel\nMenjalnik: ročni\n${extra}`;
 
@@ -108,8 +113,8 @@ test('on a phone, tapping a suggestion fills make and model; engine size is comp
   assert.match(await page.textContent('#metaSummary'), /1400 cm³/);
   await page.fill('#text1', 'Honda Civic 1.8 i-VTEC\nCena: 5.900 €\nLetnik: 2006\nPrevoženi km: 175.000\nGorivo: bencin');
   assert.match(await page.textContent('#info1'), /1800 cm³ .*⚠ druga prostornina motorja/);
-  await page.fill('#text2', 'Honda Civic\nProstornina motorja: 1.339 ccm\nCena: 4.900 €\nLetnik: 2006\nPrevoženi km: 190.000\nGorivo: bencin');
-  assert.match(await page.textContent('#info2'), /1339 cm³/);
+  await page.fill('#text2', 'Honda Civic\nProstornina motorja: 1.398 ccm\nCena: 4.900 €\nLetnik: 2006\nPrevoženi km: 190.000\nGorivo: bencin');
+  assert.match(await page.textContent('#info2'), /1398 cm³/);
   assert.doesNotMatch(await page.textContent('#info2'), /⚠/);
   assert.doesNotMatch(await page.getAttribute('#searchLinks a', 'href'), /1400|1%2C4|1\.4/);
 });
@@ -133,12 +138,10 @@ test('entries survive a reload, and a new valuation keeps the old one in My gara
   assert.equal(await page.textContent('#stepLabel'), 'KORAK 3 · POROČILO');
   assert.match(await page.innerText('#manualResult'), /Število upoštevanih oglasov: 3/);
 
-  await page.click('#reset');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '#reset');
   assert.equal(await page.textContent('#stepLabel'), 'KORAK 1 · IZBIRA TRGA');
   assert.deepEqual(await page.$$eval('.garage-item b', b => b.map(x => x.textContent)), ['Škoda Octavia 2018']);
-  await page.click('.garage-item .btn');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '.garage-item .btn');
   assert.equal(await page.textContent('#carSummary'), 'Škoda Octavia');
   assert.match(await page.innerText('#manualResult'), /Število upoštevanih oglasov: 3/);
 });
@@ -153,18 +156,19 @@ test('a shared link rebuilds the report elsewhere without the VIN', async t => {
   await addAds(page, SIX_ADS.slice(0, 4));
   await page.click('#comparePrices');
   await page.click('#share');
+  await page.waitForFunction(() => /kopirana/.test(document.getElementById('notice').textContent));
   const url = await page.evaluate(() => navigator.clipboard.readText());
   assert.match(url, /#r=[A-Za-z0-9_-]+$/);
 
   const { page: other } = await openPage(t);
   await other.goto(url);
-  await other.waitForLoadState('load');
-  assert.equal(await other.textContent('#carSummary'), 'Škoda Octavia');
+  // Opening the link reloads the page into the shared report.
+  await other.waitForFunction(() => document.getElementById('carSummary').textContent === 'Škoda Octavia');
   assert.equal(await other.inputValue('#vin'), '');
   assert.match(await other.innerText('#manualResult'), /Število upoštevanih oglasov: 4/);
 
   await other.goto(base + '#r=broken');
-  assert.match(await other.textContent('#notice'), /poškodovana/);
+  await other.waitForFunction(() => /poškodovana/.test(document.getElementById('notice').textContent));
 });
 
 test('a shared link with damaged ad data still opens the report', async t => {
@@ -173,21 +177,18 @@ test('a shared link with damaged ad data still opens the report', async t => {
   const payload = { v: 1, fields: { make: 'BMW', model: 'M3', year: '2019', mileage: '50000' },
     rows: [{ price: '30000', meta: '{broken' }, { price: '31000', meta: JSON.stringify({ km: null, year: 'x' }) }, { link: 'javascript:alert(1)', price: '32000', meta: JSON.stringify({ km: 40000 }) }] };
   await page.goto(base + '#r=' + encodeState(payload));
-  await page.waitForLoadState('load');
-  assert.equal(await page.textContent('#carSummary'), 'BMW M3');
+  await page.waitForFunction(() => document.getElementById('carSummary').textContent === 'BMW M3');
   assert.match(await page.innerText('#manualResult'), /3/);
   assert.equal(await page.inputValue('#link3'), '');
 });
 
 test('the example opens a complete report and is not saved to the garage', async t => {
   const { page } = await openPage(t);
-  await page.click('#demo');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '#demo');
   assert.ok(await page.isVisible('#demoBanner'));
   assert.ok(await page.isVisible('#chart svg'));
   assert.ok(await page.isHidden('#saveGarage'));
-  await page.click('#reset');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '#reset');
   assert.ok(await page.isHidden('#garage'));
 });
 
@@ -205,8 +206,7 @@ test('ads arrive from the extension and from the share menu', async t => {
 
 test('every language translates the main buttons', async t => {
   const { page } = await openPage(t);
-  await page.click('#demo');
-  await page.waitForLoadState('load');
+  await clickAndReload(page, '#demo');
   const seen = new Set();
   for (const lang of ['en', 'sl', 'de', 'it', 'hr']) {
     await page.selectOption('#lang', lang);
