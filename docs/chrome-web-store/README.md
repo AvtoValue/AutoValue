@@ -104,8 +104,7 @@ Vse, kar potrebuješ za oddajo razširitve AutoValue. Besedila spodaj samo kopir
 ## Pred oddajo preveri
 
 - Na strani https://avtovalue.github.io/AutoValue/privacy.html se odpre politika zasebnosti.
-- V razdelku *Kontakt* na tej strani je zdaj povezava na GitHub Issues. Če želiš, da je tam
-  e-naslov ali ime podjetja (za GDPR je priporočljivo, da je upravljavec jasno naveden), povej in
-  ga dodam.
+- V razdelku *Kontakt* je naveden e-naslov val.golicnik21@gmail.com; uporabi ga tudi kot
+  kontaktni e-naslov v konzoli za razvijalce (zavihek *Account*), da so podatki usklajeni.
 - Če kasneje spremeniš razširitev, v `extension/manifest.json` povečaj `version` (npr. 1.0.1) in
   naloži nov zip v isti element v konzoli.
