@@ -182,6 +182,64 @@ function summarizeComparison({prices,mode,askingPrice}){
  return res;
 }
 
+// Fits price against year and mileage across comparable ads (least squares on centred data), so each
+// ad can be brought to the user's car. Returns null when the data is too thin, too collinear or
+// implausible (an older or higher-mileage car must not come out more expensive).
+function depreciationModel(ads){
+ const pts=(ads||[]).filter(a=>a.price>0&&a.year>0&&Number.isFinite(a.km));
+ if(pts.length<5)return null;
+ const feats=['year','km'].filter(f=>new Set(pts.map(p=>p[f])).size>1);
+ if(!feats.length)return null;
+ const mean=k=>pts.reduce((s,p)=>s+p[k],0)/pts.length;
+ const my=mean('price'),mx=feats.map(mean);
+ const X=pts.map(p=>feats.map((f,i)=>p[f]-mx[i])),y=pts.map(p=>p.price-my);
+ const A=feats.map((_,i)=>feats.map((_,j)=>X.reduce((s,r)=>s+r[i]*r[j],0)));
+ const v=feats.map((_,i)=>X.reduce((s,r,k)=>s+r[i]*y[k],0));
+ let coef;
+ if(feats.length===1)coef=[v[0]/A[0][0]];
+ else{
+  const det=A[0][0]*A[1][1]-A[0][1]*A[1][0];
+  // 1 - r² below 0.02 means year and mileage move together too closely to separate their effects.
+  if(det/(A[0][0]*A[1][1])<0.02)return null;
+  coef=[(v[0]*A[1][1]-v[1]*A[0][1])/det,(A[0][0]*v[1]-A[1][0]*v[0])/det];
+ }
+ const m={perYear:0,perKm:0,n:pts.length};
+ feats.forEach((f,i)=>{if(f==='year')m.perYear=coef[i];else m.perKm=coef[i]});
+ if(m.perYear<0||m.perKm>0)return null;
+ return m;
+}
+
+// Brings an ad's price to the target car's year and mileage. The change is capped at ±40% so a
+// far-off ad cannot dominate; ads without year or mileage keep their price.
+function adjustPrice(ad,target,model){
+ if(!model||!(ad.price>0)||!(ad.year>0)||!Number.isFinite(ad.km)||!(target.year>0)||!Number.isFinite(target.km))return ad.price;
+ const delta=model.perYear*(target.year-ad.year)+model.perKm*(target.km-ad.km);
+ const cap=ad.price*0.4;
+ return Math.round(ad.price+Math.max(-cap,Math.min(cap,delta)));
+}
+
+const fold=s=>String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9+]+/g,' ').trim();
+
+// Finds catalogue entries that match every typed word, e.g. "civic ty" -> Honda Civic Type R.
+// Whole-word matches rank above prefixes, and shorter names (base models) come first on ties.
+function searchVehicles(query,catalogue,limit){
+ const words=fold(query).split(' ').filter(Boolean);
+ if(!words.length)return [];
+ const found=[];
+ Object.keys(catalogue).forEach(make=>catalogue[make].forEach(model=>{
+  const hay=fold(make+' '+model),tokens=hay.split(' '),compact=hay.replace(/ /g,'');
+  let score=0;
+  for(const w of words){
+   if(tokens.includes(w))score+=3;
+   else if(tokens.some(t=>t.startsWith(w)))score+=2;
+   else if(compact.includes(w))score+=1;
+   else return;
+  }
+  found.push({make,model,score,len:hay.length});
+ }));
+ return found.sort((a,b)=>b.score-a.score||a.len-b.len).slice(0,limit||8).map(({make,model})=>({make,model}));
+}
+
 const FUEL_TERMS={Diesel:['diesel','dizel','TDI','CDI','dCi','JTD','i-DTEC','HDi'],Petrol:['petrol','bencin','benzin','gasoline','TSI','TFSI','VTEC'],Hybrid:['hybrid','hibrid'],'Plug-in hybrid':['plug-in hybrid','PHEV'],Electric:['electric','električni','električni pogon'],LPG:['LPG','plin'],Other:['fuel']};
 
 // Builds the Google query used for "site:" searches on marketplace portals.
@@ -201,6 +259,6 @@ function buildVehicleQuery(v){
  return parts.join(' ');
 }
 
-const api={KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,buildVehicleQuery};
+const api={KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,buildVehicleQuery};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.AVCore=api;
 })(this);

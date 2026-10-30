@@ -42,11 +42,19 @@ The user pastes the text of comparable ads. AutoValue reads price, first registr
 power, fuel and transmission (Slovenian, Croatian, German, Italian and English wording; monthly
 financing amounts and EV range are ignored) and flags ads that differ from the user's car.
 
-From the entered prices it reports range, median and mean. With four or more prices, outliers
+With at least five ads that include year and mileage, AutoValue fits how much these ads lose
+per year and per 10,000 km (least squares) and brings each price to the user's car before
+comparing; the change per ad is capped at ±40%, and the step is skipped when the pattern is
+implausible or year and mileage are too closely linked. The user can turn this off.
+
+From the (adjusted) prices it reports range, median and mean. With four or more prices, outliers
 (outside 1.5×IQR and more than 25% from the median) are excluded. Buyers get a suggested range
 from the lower quartile to the median; sellers see whether their asking price is within
 ±max(€500, 5%) of the median. Confidence depends on the number of ads and is lowered when prices
 vary by more than 25%.
+
+Other conveniences: a quick search for make and model ("civic ty" → Honda Civic Type R), entries
+saved in the browser (localStorage) so a reload keeps them, and a print / PDF view of the report.
 
 ## API
 

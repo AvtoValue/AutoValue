@@ -72,6 +72,7 @@ function show(n){
  $('stepLabel').textContent=n===1?t().step:n===2?t().step2:t().step3;
  $('stepNo').textContent=n===1?'01 / 02':n===2?'02 / 02':'✓';
  window.scrollTo({top:0,behavior:'smooth'});
+ saveState();
 }
 function applyLang(){
  const d=t(),s=u();
@@ -88,6 +89,8 @@ function applyLang(){
  $('sellerPros').placeholder=s.prosPh;$('sellerCons').placeholder=s.consPh;$('condition').placeholder=s.conditionPh;
  ['researchHeading','researchIntro','manualHeading','manualIntro','addComp','loadListings'].forEach(k=>{$(k).textContent=s[k]});
  $('comparePrices').textContent=s.compare;
+ $('quickSearchL').textContent=s.quickSearchL;$('quickSearch').placeholder=s.quickSearchPh;
+ $('adjustToggleL').textContent=s.adjustToggle;$('print').textContent=s.print;$('reset').textContent=s.reset;
  renderBackendStatus();
  buildCompRows();
  if(step===3){buildSearchLinks();renderReportLabels();if(lastSummary)renderComparison()}
@@ -115,9 +118,9 @@ function renderReportLabels(){
  $('askingLabel').textContent=mode==='sell'?s.askingLabel:s.goalLabel;
  $('resultHeading').textContent=mode==='buy'?s.headingBuy:s.headingSell;
 }
-function analyse(){
+function analyse(quiet){
  const s=u();
- if(!$('make').value.trim()||!$('model').value.trim()||!$('year').value||!$('mileage').value){alert(s.required);return}
+ if(!$('make').value.trim()||!$('model').value.trim()||!$('year').value||!$('mileage').value){if(quiet!==true)alert(s.required);return false}
  $('carSummary').textContent=optText('make')+' '+optText('model');
  const equipment=selectedEquipment();
  const meta=[$('year').value,Number($('mileage').value).toLocaleString(locale())+' km',optText('country'),optText('fuel'),optText('trans')];
@@ -137,6 +140,7 @@ function analyse(){
  $('manualResult').textContent=s.afterAnalyse;
  show(3);
  refreshSources();
+ return true;
 }
 function copySummary(){
  const L=u().sum,na=L.na,v=id=>$(id).value||na;
@@ -187,6 +191,7 @@ function buildCompRows(rows){
   if(p&&p.text)parseAdText(i);else if(p&&p.meta)describeRow(i,JSON.parse(p.meta),true);
  }
  $('addComp').disabled=compCount>=MAX_COMPS;
+ saveState();
 }
 function addRow(){if(compCount<MAX_COMPS){compCount++;buildCompRows();$('link'+compCount).focus()}}
 function removeRow(i){const rows=readRows();rows.splice(i-1,1);compCount=Math.max(5,compCount-1);buildCompRows(rows)}
@@ -222,23 +227,35 @@ function parseAdText(i){
 let lastSummary=null;
 function comparePrices(){
  const ads=readRows().map((r,k)=>{const meta=r.meta?JSON.parse(r.meta):{};return {index:k+1,link:r.link.trim(),price:Number(r.price),meta}}).filter(a=>Number.isFinite(a.price)&&a.price>0);
- const result=core.summarizeComparison({prices:ads.map(a=>a.price),mode,askingPrice:Number($('price').value)});
- lastSummary=result?{result,ads}:null;
+ const tgt=target(),adjust=$('adjustToggle').checked,withPrice=a=>Object.assign({},a.meta,{price:a.price});
+ const model=adjust?core.depreciationModel(ads.map(withPrice)):null;
+ ads.forEach(a=>{a.adjusted=core.adjustPrice(withPrice(a),tgt,model)});
+ const result=core.summarizeComparison({prices:ads.map(a=>a.adjusted),mode,askingPrice:Number($('price').value)});
+ lastSummary=result?{result,ads,model,adjust}:null;
  renderComparison();
+ saveState();
 }
+const fill=(text,values)=>text.replace(/\{(\w+)\}/g,(m,k)=>values[k]!==undefined?values[k]:m);
 function renderComparison(){
  const s=u(),out=$('manualResult');
  if(!lastSummary){out.textContent=s.noPrices;return}
  const {result,ads}=lastSummary,st=result.stats;
  const line=(label,value)=>el('div',{},[el('strong',{textContent:label}),value]);
  const nodes=[
-  line(s.rangeEntered,money(st.min)+' – '+money(st.max)),
+  line(lastSummary.model?s.rangeAdjusted:s.rangeEntered,money(st.min)+' – '+money(st.max)),
   line(s.median,money(st.median)),
   line(s.mean,money(st.mean)),
   line(s.count,String(st.n)),
  ];
  if(st.outliers.length)nodes.push(line(s.outliers,st.outliers.map(money).join(', ')));
  nodes.push(line(s.confidence,s.conf[result.confidence]+(result.highSpread?s.spread:'')));
+ const {model}=lastSummary;
+ if(model){
+  const tgt=target();
+  nodes.push(el('div',{className:'adjust-note',textContent:fill(s.adjustInfo,{year:tgt.year,km:tgt.km.toLocaleString(locale())+' km',n:model.n,perKm:money(-model.perKm*10000),perYear:money(model.perYear)})}));
+  const changed=ads.filter(a=>a.adjusted!==a.price);
+  if(changed.length)nodes.push(line(s.adjustedList,changed.map(a=>'#'+a.index+' '+money(a.price)+' → '+money(a.adjusted)).join(' · ')));
+ }else if(lastSummary.adjust)nodes.push(el('div',{className:'adjust-note',textContent:s.adjustNeed}));
  if(mode==='buy'){
   nodes.push(line(s.buyRange,money(result.buyRange[0])+' – '+money(result.buyRange[1])),el('div',{textContent:s.buyTip}));
  }else if(result.verdict){
@@ -294,6 +311,82 @@ function loadListings(){
  },()=>{$('manualResult').textContent=s.loadFailed});
 }
 
+// --- Quick make/model search ---
+const catalogue={};
+Object.keys(modelOptions).forEach(m=>{if(m!==OTHER_MAKE)catalogue[m]=modelOptions[m].filter(x=>x!==OTHER_MODEL)});
+let suggestions=[],activeSuggestion=-1;
+function renderSuggestions(){
+ const list=$('quickSearchList'),q=$('quickSearch').value;
+ if(!q.trim()){suggestions=[];closeSuggestions();return}
+ suggestions=core.searchVehicles(q,catalogue,8);activeSuggestion=suggestions.length?0:-1;
+ list.replaceChildren(...(suggestions.length?suggestions.map((sug,i)=>{
+  const li=el('li',{id:'sug'+i,textContent:sug.make+' '+sug.model});li.setAttribute('role','option');
+  li.addEventListener('pointerdown',e=>e.preventDefault());li.addEventListener('click',()=>chooseSuggestion(i));
+  return li;
+ }):[el('li',{className:'none',textContent:u().quickSearchNone})]));
+ list.classList.remove('hidden');$('quickSearch').setAttribute('aria-expanded','true');
+ updateActiveSuggestion();
+}
+function updateActiveSuggestion(){
+ [...$('quickSearchList').children].forEach((li,i)=>li.setAttribute('aria-selected',String(i===activeSuggestion)));
+ if(activeSuggestion>=0)$('quickSearch').setAttribute('aria-activedescendant','sug'+activeSuggestion);else $('quickSearch').removeAttribute('aria-activedescendant');
+}
+function closeSuggestions(){
+ $('quickSearchList').classList.add('hidden');$('quickSearch').setAttribute('aria-expanded','false');$('quickSearch').removeAttribute('aria-activedescendant');
+}
+function chooseSuggestion(i){
+ const sug=suggestions[i];if(!sug)return;
+ $('make').value=sug.make;setModels();$('model').value=sug.model;
+ $('quickSearch').value=sug.make+' '+sug.model;closeSuggestions();saveState();$('year').focus();
+}
+function onQuickSearchKey(e){
+ const open=!$('quickSearchList').classList.contains('hidden');
+ if((e.key==='ArrowDown'||e.key==='ArrowUp')&&suggestions.length){
+  e.preventDefault();
+  if(!open)renderSuggestions();
+  else activeSuggestion=(activeSuggestion+(e.key==='ArrowDown'?1:-1)+suggestions.length)%suggestions.length;
+  updateActiveSuggestion();
+ }else if(e.key==='Enter'&&open&&activeSuggestion>=0){e.preventDefault();chooseSuggestion(activeSuggestion)}
+ else if(e.key==='Escape')closeSuggestions();
+}
+
+// --- Saved progress (this browser only) ---
+const STORE_KEY='autovalue:v1';
+const FIELDS=['country','make','model','year','mileage','fuel','trans','powerUnit','powerEntry','color','price','vin','sellerPros','sellerCons','trim','condition'];
+let restoring=true,saveTimer;
+function saveState(){
+ if(restoring)return;
+ const state={v:1,lang:lang(),mode,step,compCount,compared:!!lastSummary,adjust:$('adjustToggle').checked,fields:{},equipment:[...document.querySelectorAll('.equipment-check:checked')].map(c=>c.value),rows:readRows()};
+ FIELDS.forEach(id=>{state.fields[id]=$(id).value});
+ try{localStorage.setItem(STORE_KEY,JSON.stringify(state))}catch(e){}
+}
+function saveSoon(){clearTimeout(saveTimer);saveTimer=setTimeout(saveState,300)}
+function restoreState(){
+ let st=null;
+ try{st=JSON.parse(localStorage.getItem(STORE_KEY)||'null')}catch(e){}
+ if(!st||st.v!==1)return;
+ try{
+  if(translations[st.lang])$('lang').value=st.lang;
+  if(st.mode==='buy'||st.mode==='sell'){mode=st.mode;document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('selected',x.dataset.mode===mode));updateModeFields()}
+  const f=st.fields||{},set=id=>{if(typeof f[id]==='string')$(id).value=f[id]};
+  set('country');set('make');setModels();
+  FIELDS.filter(id=>id!=='country'&&id!=='make').forEach(set);
+  previousPowerUnit=$('powerUnit').value;
+  (st.equipment||[]).forEach(v=>{const c=[...document.querySelectorAll('.equipment-check')].find(x=>x.value===v);if(c)c.checked=true});
+  $('adjustToggle').checked=st.adjust!==false;
+  compCount=Math.min(MAX_COMPS,Math.max(5,Number(st.compCount)||5));
+  applyLang();
+  buildCompRows(Array.isArray(st.rows)?st.rows.slice(0,MAX_COMPS):[]);
+  if(st.step===2)show(2);
+  else if(st.step===3&&analyse(true)&&st.compared)comparePrices();
+ }catch(e){}
+}
+function resetAll(){
+ if(!confirm(u().resetConfirm))return;
+ try{localStorage.removeItem(STORE_KEY)}catch(e){}
+ restoring=true;location.reload();
+}
+
 // --- Init ---
 populateMakes();
 populateYears();
@@ -307,13 +400,23 @@ $('country').addEventListener('change',()=>{const m={SI:'sl',DE:'de',AT:'de',IT:
 $('next').addEventListener('click',()=>show(2));
 $('back').addEventListener('click',()=>show(1));
 $('edit').addEventListener('click',()=>show(2));
-document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('selected',x===b));updateModeFields()}));
+document.querySelectorAll('.mode').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.mode;document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('selected',x===b));updateModeFields();saveState()}));
 $('analyse').addEventListener('click',analyse);
 $('copy').addEventListener('click',copySummary);
 $('comparePrices').addEventListener('click',comparePrices);
 $('addComp').addEventListener('click',addRow);
 $('loadListings').addEventListener('click',loadListings);
+$('quickSearch').addEventListener('input',renderSuggestions);
+$('quickSearch').addEventListener('keydown',onQuickSearchKey);
+$('quickSearch').addEventListener('blur',closeSuggestions);
+$('print').addEventListener('click',()=>window.print());
+$('reset').addEventListener('click',resetAll);
+document.addEventListener('input',saveSoon);
+document.addEventListener('change',saveSoon);
 updateModeFields();
 applyLang();
+restoreState();
+restoring=false;
+saveState();
 detectBackend();
 })();
