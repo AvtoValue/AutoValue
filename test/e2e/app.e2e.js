@@ -157,9 +157,44 @@ test('engine size is suggested from power, and a manual choice is kept', async t
   assert.equal(await page.inputValue('#engine'), '1900');
   await page.fill('#powerEntry', '77');
   assert.equal(await page.inputValue('#engine'), '', 'an automatic choice is cleared when several engines fit');
-  assert.deepEqual(await page.$$eval('#engineHint button', b => b.map(x => x.textContent)), ['Uporabi 1600 cm³ · 1.6 TDI', 'Uporabi 1900 cm³ · 1.9 TDI']);
+  assert.deepEqual(await page.$$eval('#engineHint button:not(.link)', b => b.map(x => x.textContent)), ['Uporabi 1600 cm³ · 1.6 TDI', 'Uporabi 1900 cm³ · 1.9 TDI']);
   await page.selectOption('#year', '2006');
   assert.equal(await page.inputValue('#engine'), '1900');
+});
+
+test('the iPhone shortcut output pastes into the next free row; errors can be reported', async t => {
+  const { page, context } = await openPage(t);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.slice(0, -1) });
+  // Run the shortcut's script on a mock ad page, the way "Run JavaScript on Web Page" does.
+  await page.route('https://www.avto.net/Ads/details.asp?id=1', r => r.fulfill({ contentType: 'text/html; charset=utf-8',
+    body: '<title>Honda Civic 1.4 i-VTEC</title><h1>Honda Civic 1.4 i-VTEC</h1><p>Cena: 5.400 €</p><p>Prva registracija: 2006</p><p>Prevoženi km: 176.000 km</p><p>Gorivo: bencinski motor</p><p>Moč: 61 kW (83 KM)</p><p>Prostornina motorja: 1.339 ccm</p>' }));
+  await page.goto('https://www.avto.net/Ads/details.asp?id=1');
+  const g = {};
+  new Function('root', require('fs').readFileSync(require.resolve('../../public/js/i18n.js'), 'utf8').replace('})(this);', '})(root);'))(g);
+  const copied = await page.evaluate(code => new Promise(completion => { eval(code); }), g.AVI18n.shortcutCode);
+
+  await page.goto(base);
+  await page.evaluate(text => navigator.clipboard.writeText(text), copied);
+  await page.click('#next');
+  await page.fill('#quickSearch', 'honda civic');
+  await page.keyboard.press('Enter');
+  await page.selectOption('#year', '2006');
+  await page.selectOption('#fuel', 'Petrol');
+  await page.fill('#powerEntry', '61');
+  await page.fill('#mileage', '170000');
+  await page.click('#analyse');
+  await page.click('#pasteNext');
+  await page.waitForFunction(() => /dodan kot #1/.test(document.getElementById('notice').textContent));
+  assert.equal(await page.inputValue('#link1'), 'https://www.avto.net/Ads/details.asp?id=1');
+  assert.equal(await page.inputValue('#comp1'), '5400');
+  assert.doesNotMatch(await page.textContent('#info1'), /⚠/);
+
+  // Report buttons open a prefilled e-mail; they must not break the page.
+  await page.click('#sum1');
+  assert.ok(await page.isVisible('#report1'));
+  await page.click('#report1');
+  await page.click('#edit');
+  assert.ok(await page.isVisible('#engineHint button.link'));
 });
 
 test('seller gets a verdict on the asking price', async t => {
