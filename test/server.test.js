@@ -35,6 +35,7 @@ test('serves the app and static assets with security headers', async () => {
     const js = await fetch(app.base + '/js/core.js');
     assert.match(js.headers.get('content-type'), /javascript/);
     assert.equal((await fetch(app.base + '/missing.js')).status, 404);
+    assert.match((await fetch(app.base + '/manifest.webmanifest')).headers.get('content-type'), /manifest\+json/);
   } finally { await app.close(); }
 });
 

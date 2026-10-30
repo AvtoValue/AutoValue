@@ -89,6 +89,7 @@ function applyLang(){
  $('sellerPros').placeholder=s.prosPh;$('sellerCons').placeholder=s.consPh;$('condition').placeholder=s.conditionPh;
  ['researchHeading','researchIntro','manualHeading','manualIntro','addComp','loadListings'].forEach(k=>{$(k).textContent=s[k]});
  $('comparePrices').textContent=s.compare;
+ ['extSummary','extHow','extDownload'].forEach(k=>{$(k).textContent=s[k]});
  $('quickSearchL').textContent=s.quickSearchL;$('quickSearch').placeholder=s.quickSearchPh;
  $('adjustToggleL').textContent=s.adjustToggle;$('print').textContent=s.print;$('reset').textContent=s.reset;
  renderBackendStatus();
@@ -178,20 +179,32 @@ function buildCompRows(rows){
  for(let i=1;i<=compCount;i++){
   const link=el('input',{type:'url',id:'link'+i,placeholder:s.link+i+' — https://www.'+exampleDomain+'/…'});link.setAttribute('aria-label',s.link+i);
   const open=el('button',{type:'button',className:'btn quiet comp-open',id:'open'+i,textContent:s.open});
+  const paste=el('button',{type:'button',className:'btn quiet comp-paste',id:'paste'+i,textContent:s.pasteBtn});
+  paste.hidden=!canReadClipboard;
   const text=el('textarea',{id:'text'+i,rows:2,placeholder:s.paste});
   const info=el('div',{className:'comp-info',id:'info'+i,textContent:s.empty});
   const price=el('input',{type:'number',min:'1',id:'comp'+i,placeholder:s.price});price.setAttribute('aria-label',s.price+' '+i);
-  const row=el('div',{className:'comp-row'},[el('div',{className:'comp-row-head'},[link,open]),text,el('div',{className:'comp-row-foot'},[info,price])]);
+  const row=el('div',{className:'comp-row'},[el('div',{className:'comp-row-head'},[link,open]),text,paste,el('div',{className:'comp-row-foot'},[info,price])]);
   if(i>5){const rm=el('button',{type:'button',className:'btn quiet comp-remove',textContent:s.remove});rm.addEventListener('click',()=>removeRow(i));row.append(el('div',{className:'comp-extra'},[el('span'),rm]))}
   box.append(row);
   const p=prev[i-1];
   if(p){link.value=p.link;text.value=p.text;price.value=p.price;if(p.meta)link.dataset.meta=p.meta}
   open.addEventListener('click',()=>openAd(i));
+  paste.addEventListener('click',()=>pasteInto(i));
   text.addEventListener('input',()=>parseAdText(i));
   if(p&&p.text)parseAdText(i);else if(p&&p.meta)describeRow(i,JSON.parse(p.meta),true);
  }
  $('addComp').disabled=compCount>=MAX_COMPS;
  saveState();
+}
+const canReadClipboard=!!(navigator.clipboard&&navigator.clipboard.readText);
+function pasteInto(i){
+ navigator.clipboard.readText().then(txt=>{
+  if(!txt.trim())return;
+  // A bare link (e.g. copied from an app's share menu) goes into the link field.
+  if(/^https?:\/\/\S+$/i.test(txt.trim())&&!$('link'+i).value.trim()){$('link'+i).value=txt.trim();saveState();return}
+  $('text'+i).value=txt;parseAdText(i);saveState();
+ },()=>notify(u().pasteFailed));
 }
 function addRow(){if(compCount<MAX_COMPS){compCount++;buildCompRows();$('link'+compCount).focus()}}
 function removeRow(i){const rows=readRows();rows.splice(i-1,1);compCount=Math.max(5,compCount-1);buildCompRows(rows)}
@@ -387,6 +400,46 @@ function resetAll(){
  restoring=true;location.reload();
 }
 
+// --- Ads sent from the browser extension (#ad=…) or the phone's share menu (?url=&text=) ---
+let noticeTimer;
+function notify(text){
+ const n=$('notice');n.textContent=text;n.classList.remove('hidden');
+ clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>n.classList.add('hidden'),8000);
+}
+function addIncomingAd(ad){
+ const s=u(),link=/^https?:\/\//i.test(ad.url||'')?ad.url.trim():'';
+ const text=[ad.title,ad.text].filter(Boolean).join('\n').slice(0,50000);
+ if(!link&&!text.trim())return;
+ const rows=readRows();
+ if(link&&rows.some(r=>r.link.trim()===link)){notify(s.adDuplicate);return}
+ let i=rows.findIndex(r=>!r.link.trim()&&!r.text.trim()&&!r.price);
+ if(i<0){
+  if(compCount>=MAX_COMPS){notify(s.adsFull);return}
+  compCount++;rows.push({link:'',text:'',price:'',meta:''});i=rows.length-1;
+ }
+ rows[i]={link,text,price:'',meta:''};
+ buildCompRows(rows);
+ const meta=$('link'+(i+1)).dataset.meta?JSON.parse($('link'+(i+1)).dataset.meta):{};
+ notify(fill(meta.price?s.adAdded:s.adAddedNoPrice,{n:i+1}));
+ if(step===3)$('compRows').children[i].scrollIntoView({block:'center'});
+}
+function readIncomingAd(){
+ const clean=()=>history.replaceState(null,'',location.pathname);
+ if(location.hash.startsWith('#ad=')){
+  try{addIncomingAd(JSON.parse(decodeURIComponent(location.hash.slice(4))))}catch(e){}
+  clean();return;
+ }
+ const q=new URLSearchParams(location.search);
+ if(q.has('url')||q.has('text')){
+  let url=q.get('url')||'',text=q.get('text')||'';
+  // Android apps often put the link inside the shared text.
+  const m=!url&&text.match(/https?:\/\/\S+/);
+  if(m){url=m[0];text=text.replace(m[0],'').trim()}
+  addIncomingAd({url,title:q.get('title')||'',text});
+  clean();
+ }
+}
+
 // --- Init ---
 populateMakes();
 populateYears();
@@ -417,6 +470,11 @@ updateModeFields();
 applyLang();
 restoreState();
 restoring=false;
+readIncomingAd();
 saveState();
 detectBackend();
+// Another tab (e.g. one opened by the extension) saved new entries: refresh this one if it is in the background.
+window.addEventListener('hashchange',readIncomingAd);
+window.addEventListener('storage',e=>{if(e.key===STORE_KEY&&document.hidden)location.reload()});
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();

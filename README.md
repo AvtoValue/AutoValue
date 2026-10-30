@@ -34,6 +34,8 @@ npm test
 | `public/js/data.js` | Makes and models sold in Europe, including sport versions (e.g. Civic Type R), and marketplace sites |
 | `server/server.js` | Static file server + JSON API |
 | `server/providers/index.js` | Registry of licensed listing providers (empty for now) |
+| `public/manifest.webmanifest`, `public/sw.js`, `public/icons/` | Installable app, offline cache and share target |
+| `extension/` | Browser extension that sends the open ad to AutoValue |
 | `test/` | `node:test` tests for the core logic and the server |
 
 ## How the comparison works
@@ -55,6 +57,24 @@ vary by more than 25%.
 
 Other conveniences: a quick search for make and model ("civic ty" → Honda Civic Type R), entries
 saved in the browser (localStorage) so a reload keeps them, and a print / PDF view of the report.
+
+## On a phone
+
+AutoValue is an installable web app (PWA): on Android choose *Add to Home screen* / *Install app*,
+on iPhone *Share → Add to Home Screen*. It then works offline, and on Android it appears in the
+*Share* menu of other apps: sharing an ad adds its link (and any shared text) to the comparison.
+Most apps share only the link, so the ad text still has to be copied; the *Paste copied ad*
+button inserts it from the clipboard.
+
+## Browser extension
+
+`extension/` is a Chrome/Edge extension (Manifest V3). Clicking its icon on an ad page reads the
+text of that page (only on click, `activeTab`) and opens AutoValue with it in the URL fragment,
+which is never sent to a server. The Pages workflow publishes it as `autovalue-extension.zip`.
+
+Install for testing: `chrome://extensions` → *Developer mode* → *Load unpacked* → choose
+`extension/`. The AutoValue address can be changed on the extension's options page (e.g. to
+`http://127.0.0.1:8080/` for local development). `npm run build:extension` builds the zip locally.
 
 ## API
 
