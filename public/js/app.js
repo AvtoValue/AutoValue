@@ -41,13 +41,13 @@ function translateOptions(){
  [...$('make').options].forEach(opt=>{if(opt.value===OTHER_MAKE)opt.textContent=u().otherMake});
  [...$('model').options].forEach(opt=>{if(opt.value===OTHER_MODEL)opt.textContent=u().otherModel});
 }
-// Engine sizes are stored in cm³ and shown as "1,4 l (1400 cm³)".
-const litres=cc=>(cc/1000).toLocaleString(locale(),{minimumFractionDigits:1,maximumFractionDigits:2})+' l';
+// Engine sizes are stored and shown in cm³ ("1800 cm³"), like on the portals.
+const ccText=cc=>Math.round(cc)+' cm³';
 function populateEngines(){
  core.ENGINE_SIZES.forEach(cc=>$('engine').append(el('option',{value:String(cc)})));
 }
 function updateEngineField(){
- [...$('engine').options].forEach(o=>{o.textContent=o.value?litres(Number(o.value))+' ('+o.value+' cm³)':u().chooseEngine});
+ [...$('engine').options].forEach(o=>{o.textContent=o.value?ccText(Number(o.value)):u().chooseEngine});
  const electric=$('fuel').value==='Electric';
  $('engineField').classList.toggle('hidden',electric);
  if(electric)$('engine').value='';
@@ -143,7 +143,7 @@ function analyse(quiet){
  $('carSummary').textContent=optText('make')+' '+optText('model');
  const equipment=selectedEquipment();
  const meta=[$('year').value,Number($('mileage').value).toLocaleString(locale())+' km',optText('country'),optText('fuel'),optText('trans')];
- if($('engine').value)meta.push(litres(Number($('engine').value)));
+ if($('engine').value)meta.push(ccText(Number($('engine').value)));
  if($('color').value)meta.push(optText('color'));
  if(mode==='sell'){
   if($('trim').value)meta.push($('trim').value);
@@ -176,11 +176,11 @@ function copySummary(){
 function buildSearchLinks(){
  const s=u(),box=$('searchLinks'),sites=marketSites[$('country').value]||[];
  const year=Number($('year').value),mileage=Number($('mileage').value),hasPower=$('powerEntry').value.trim()!=='';
- const q=core.buildVehicleQuery({make:realMake(),model:realModel(),year,mileage,fuel:$('fuel').value,transmission:$('trans').value,mode,trim:$('trim').value.trim(),kw:Number($('power').value),hp:hasPower?Number($('powerHp').value):0,cc:Number($('engine').value)||0,equipment:selectedEquipment()});
+ const q=core.buildVehicleQuery({make:realMake(),model:realModel(),year,mileage,fuel:$('fuel').value,transmission:$('trans').value,mode,trim:$('trim').value.trim(),kw:Number($('power').value),hp:hasPower?Number($('powerHp').value):0,equipment:selectedEquipment()});
  const years=year?[year-1,year,year+1].join(', '):'—';
  const km=mileage>0?Math.max(0,mileage-50000).toLocaleString(locale())+'–'+(mileage+50000).toLocaleString(locale())+' km':'—';
  const power=hasPower?Math.round(Number($('powerHp').value))+' KM / '+Math.round(Number($('power').value))+' kW':s.notSpecified;
- const filters=el('p',{className:'note search-filters',textContent:s.filtersLead+optText('country')+' · '+s.fYears+years+' · '+s.fKm+km+' · '+s.fFuel+optText('fuel')+' · '+s.fPower+power+($('engine').value?' · '+s.fEngine+litres(Number($('engine').value)):'')+' · '+s.fTrans+optText('trans')+'. '+s.filtersTail});
+ const filters=el('p',{className:'note search-filters',textContent:s.filtersLead+optText('country')+' · '+s.fYears+years+' · '+s.fKm+km+' · '+s.fFuel+optText('fuel')+' · '+s.fPower+power+' · '+s.fTrans+optText('trans')+'. '+s.filtersTail});
  box.replaceChildren(filters,...sites.map(([name,domain])=>el('a',{className:'search-link',target:'_blank',rel:'noopener noreferrer',href:'https://www.google.com/search?q='+encodeURIComponent('site:'+domain+' '+q),textContent:s.searchPrefix+name+' ↗'})));
 }
 
@@ -192,6 +192,7 @@ function parseMeta(str){
  if(!raw||typeof raw!=='object')return {};
  const out={};
  ['price','year','km','kw','hp','cc'].forEach(k=>{if(typeof raw[k]==='number'&&Number.isFinite(raw[k]))out[k]=raw[k]});
+ if(raw.ccExact===true)out.ccExact=true;
  ['fuel','transmission','source','title','url'].forEach(k=>{if(typeof raw[k]==='string')out[k]=raw[k].slice(0,200)});
  return out;
 }
@@ -237,7 +238,7 @@ function collapseRow(i){
  const parts=['#'+i,money(price)];
  if(meta.year)parts.push(String(meta.year));
  if(Number.isFinite(meta.km))parts.push(meta.km.toLocaleString(locale())+' km');
- if(meta.cc)parts.push(litres(meta.cc));
+ if(meta.cc)parts.push(ccText(meta.cc));
  const warn=core.comparabilityWarnings(meta,target()).length>0;
  const sum=$('sum'+i);
  sum.className='comp-summary'+(warn?' warn':'');
@@ -268,7 +269,7 @@ function describeRow(i,d,fromSource){
  if(d.year)parts.push(s.year+' '+d.year);
  if(d.km!==undefined)parts.push(d.km.toLocaleString(locale())+' '+s.km);
  if(d.kw)parts.push(Math.round(d.kw)+' kW'+(d.hp?' / '+d.hp+' KM':''));
- if(d.cc)parts.push(litres(d.cc));
+ if(d.cc)parts.push(ccText(d.cc));
  if(d.fuel)parts.push(s.fuels[d.fuel]||d.fuel);
  if(d.transmission)parts.push(s.trans[d.transmission]||d.transmission);
  const warns=core.comparabilityWarnings(d,target()).map(w=>s.warn[w]);

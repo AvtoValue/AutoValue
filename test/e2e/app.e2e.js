@@ -96,7 +96,7 @@ test('on a phone, tapping a suggestion fills make and model; engine size is comp
 
   await page.selectOption('#model', 'Civic');
   await page.selectOption('#fuel', 'Petrol');
-  assert.equal(await page.textContent('#engine option[value="1400"]'), '1,4 l (1400 cm³)');
+  assert.equal(await page.textContent('#engine option[value="1400"]'), '1400 cm³');
   await page.selectOption('#engine', '1400');
   await page.selectOption('#fuel', 'Electric');
   assert.ok(await page.isHidden('#engineField'));
@@ -105,11 +105,13 @@ test('on a phone, tapping a suggestion fills make and model; engine size is comp
   await page.selectOption('#year', '2006');
   await page.fill('#mileage', '180000');
   await page.tap('#analyse');
-  assert.match(await page.textContent('#metaSummary'), /1,4 l/);
+  assert.match(await page.textContent('#metaSummary'), /1400 cm³/);
   await page.fill('#text1', 'Honda Civic 1.8 i-VTEC\nCena: 5.900 €\nLetnik: 2006\nPrevoženi km: 175.000\nGorivo: bencin');
-  assert.match(await page.textContent('#info1'), /1,8 l .*⚠ druga prostornina motorja/);
-  await page.fill('#text2', 'Honda Civic 1.4 i-VTEC\nCena: 4.900 €\nLetnik: 2006\nPrevoženi km: 190.000\nGorivo: bencin');
+  assert.match(await page.textContent('#info1'), /1800 cm³ .*⚠ druga prostornina motorja/);
+  await page.fill('#text2', 'Honda Civic\nProstornina motorja: 1.339 ccm\nCena: 4.900 €\nLetnik: 2006\nPrevoženi km: 190.000\nGorivo: bencin');
+  assert.match(await page.textContent('#info2'), /1339 cm³/);
   assert.doesNotMatch(await page.textContent('#info2'), /⚠/);
+  assert.doesNotMatch(await page.getAttribute('#searchLinks a', 'href'), /1400|1%2C4|1\.4/);
 });
 
 test('seller gets a verdict on the asking price', async t => {
