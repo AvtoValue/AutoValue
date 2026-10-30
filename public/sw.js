@@ -1,7 +1,7 @@
 // Offline support: network first so updates show up immediately, cached copy when offline.
 // Bump VERSION when the list of app files changes.
-const VERSION = 'autovalue-v16';
-const APP_FILES = ['./', 'index.html', 'css/styles.css', 'js/i18n.js', 'js/data.js', 'js/core.js', 'js/app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
+const VERSION = 'autovalue-v17';
+const APP_FILES = ['./', 'index.html', 'css/styles.css', 'js/i18n.js', 'js/data.js', 'js/core.js', 'js/app.js', 'privacy.html', 'js/legal.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(VERSION).then(cache => cache.addAll(APP_FILES)).then(() => self.skipWaiting()));

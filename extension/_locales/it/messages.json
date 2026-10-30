@@ -1,0 +1,11 @@
+{
+  "name": {
+    "message": "AutoValue – invia annuncio"
+  },
+  "description": {
+    "message": "Aggiunge con un clic l’annuncio auto che stai guardando al tuo confronto prezzi AutoValue."
+  },
+  "actionTitle": {
+    "message": "Invia questo annuncio ad AutoValue"
+  }
+}

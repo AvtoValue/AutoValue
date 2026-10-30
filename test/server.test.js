@@ -36,6 +36,7 @@ test('serves the app and static assets with security headers', async () => {
     assert.match(js.headers.get('content-type'), /javascript/);
     assert.equal((await fetch(app.base + '/missing.js')).status, 404);
     assert.match((await fetch(app.base + '/manifest.webmanifest')).headers.get('content-type'), /manifest\+json/);
+    assert.match(await (await fetch(app.base + '/privacy.html')).text(), /Zasebnost in pogoji uporabe/);
   } finally { await app.close(); }
 });
 

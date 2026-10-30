@@ -90,6 +90,9 @@ function applyLang(){
  ['researchHeading','researchIntro','manualHeading','manualIntro','addComp','loadListings'].forEach(k=>{$(k).textContent=s[k]});
  $('comparePrices').textContent=s.compare;
  ['extSummary','extHow','extDownload'].forEach(k=>{$(k).textContent=s[k]});
+ $('edit').textContent=s.editBtn;$('copy').textContent=s.copyBtn;
+ if(!lastSummary){$('estimatedRangeValue').textContent=s.notAvailable;$('confidenceValue').textContent=s.pendingData}
+ $('privacyLink').textContent=s.privacyLink;$('privacyLink').href='privacy.html?lang='+lang();
  $('quickSearchL').textContent=s.quickSearchL;$('quickSearch').placeholder=s.quickSearchPh;
  $('adjustToggleL').textContent=s.adjustToggle;$('print').textContent=s.print;$('reset').textContent=s.reset;
  renderBackendStatus();
