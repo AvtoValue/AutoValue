@@ -90,6 +90,7 @@ function applyLang(){
  ['researchHeading','researchIntro','manualHeading','manualIntro','addComp','loadListings'].forEach(k=>{$(k).textContent=s[k]});
  $('comparePrices').textContent=s.compare;
  ['extSummary','extHow','extDownload'].forEach(k=>{$(k).textContent=s[k]});
+ document.title='AutoValue — '+s.pageTitle;$('protoLabel').textContent=s.protoLabel;
  $('demo').textContent=s.demoBtn;$('garageHeading').textContent=s.garageHeading;$('share').textContent=s.shareBtn;$('saveGarage').textContent=s.saveGarage;$('feedbackLink').textContent=s.feedback;
  $('demoBanner').textContent=s.demoBanner;$('demoBanner').classList.toggle('hidden',!isDemo);$('saveGarage').hidden=isDemo;
  renderGarage();
@@ -172,6 +173,16 @@ function buildSearchLinks(){
 }
 
 // --- Comparable ad rows ---
+// Ad details come from parsed text, shared links or saved data, so keep only known fields of the right type.
+function parseMeta(str){
+ let raw;
+ try{raw=JSON.parse(str||'{}')}catch(e){return {}}
+ if(!raw||typeof raw!=='object')return {};
+ const out={};
+ ['price','year','km','kw','hp'].forEach(k=>{if(typeof raw[k]==='number'&&Number.isFinite(raw[k]))out[k]=raw[k]});
+ ['fuel','transmission','source','title','url'].forEach(k=>{if(typeof raw[k]==='string')out[k]=raw[k].slice(0,200)});
+ return out;
+}
 function readRows(){
  const rows=[];
  for(let i=1;$('link'+i);i++)rows.push({link:$('link'+i).value,text:$('text'+i).value,price:$('comp'+i).value,meta:$('link'+i).dataset.meta||''});
@@ -200,7 +211,7 @@ function buildCompRows(rows){
   open.addEventListener('click',()=>openAd(i));
   paste.addEventListener('click',()=>pasteInto(i));
   text.addEventListener('input',()=>parseAdText(i));
-  if(p&&p.text)parseAdText(i);else if(p&&p.meta)describeRow(i,JSON.parse(p.meta),true);
+  if(p&&p.text)parseAdText(i);else if(p&&p.meta)describeRow(i,parseMeta(p.meta),true);
   if(p)collapseRow(i);
  }
  $('addComp').disabled=compCount>=MAX_COMPS;
@@ -210,7 +221,7 @@ function buildCompRows(rows){
 function collapseRow(i){
  const price=Number($('comp'+i).value),row=$('compRows').children[i-1];
  if(!(price>0)||!row)return;
- const s=u(),meta=$('link'+i).dataset.meta?JSON.parse($('link'+i).dataset.meta):{};
+ const s=u(),meta=parseMeta($('link'+i).dataset.meta);
  const parts=['#'+i,money(price)];
  if(meta.year)parts.push(String(meta.year));
  if(Number.isFinite(meta.km))parts.push(meta.km.toLocaleString(locale())+' km');
@@ -263,7 +274,7 @@ function parseAdText(i){
 // --- Comparison ---
 let lastSummary=null;
 function comparePrices(){
- const ads=readRows().map((r,k)=>{const meta=r.meta?JSON.parse(r.meta):{};return {index:k+1,link:r.link.trim(),price:Number(r.price),meta}}).filter(a=>Number.isFinite(a.price)&&a.price>0);
+ const ads=readRows().map((r,k)=>{const meta=parseMeta(r.meta);return {index:k+1,link:r.link.trim(),price:Number(r.price),meta}}).filter(a=>Number.isFinite(a.price)&&a.price>0);
  const tgt=target(),adjust=$('adjustToggle').checked,withPrice=a=>Object.assign({},a.meta,{price:a.price});
  const model=adjust?core.depreciationModel(ads.map(withPrice)):null;
  ads.forEach(a=>{a.adjusted=core.adjustPrice(withPrice(a),tgt,model)});
@@ -589,7 +600,7 @@ function addIncomingAd(ad){
  }
  rows[i]={link,text,price:'',meta:''};
  buildCompRows(rows);
- const meta=$('link'+(i+1)).dataset.meta?JSON.parse($('link'+(i+1)).dataset.meta):{};
+ const meta=parseMeta($('link'+(i+1)).dataset.meta);
  notify(fill(meta.price?s.adAdded:s.adAddedNoPrice,{n:i+1}));
  if(step===3)$('compRows').children[i].scrollIntoView({block:'center'});
 }
