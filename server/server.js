@@ -20,6 +20,8 @@ const TYPES = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
+  '.zip': 'application/zip',
 };
 
 const SECURITY_HEADERS = {

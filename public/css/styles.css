@@ -7,11 +7,13 @@
 .quick-search{position:relative}.suggestions{position:absolute;top:100%;left:0;right:0;z-index:5;margin:4px 0 0;padding:4px;list-style:none;background:#0d1118;border:1px solid var(--accent);border-radius:11px;box-shadow:0 14px 40px #0008;max-height:300px;overflow:auto}.suggestions li{padding:10px 11px;border-radius:8px;cursor:pointer;font-size:14px}.suggestions li[aria-selected="true"],.suggestions li:hover{background:#202a1a}.suggestions li.none{cursor:default;color:var(--muted)}.suggestions li.none:hover{background:none}.suggestions small{color:var(--muted);margin-left:6px}
 .adjust-toggle{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;font-weight:500;color:#dce2eb}.adjust-toggle input{width:auto;accent-color:var(--accent)}.adjust-note{margin-top:6px;color:var(--muted)}
 .report-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end}.reset-row{margin-top:14px;text-align:right}.btn.link{background:none;border:0;padding:6px 0;color:var(--muted);text-decoration:underline;font-weight:600}
+.notice{position:sticky;top:10px;z-index:10;margin:-30px 0 18px;padding:12px 14px;border:1px solid var(--accent);border-radius:12px;background:#202a1a;color:var(--text);font-size:14px;box-shadow:0 10px 30px #0006}
+.comp-paste{margin-top:8px;padding:9px 12px;font-size:13px}.ext-tip{margin:0 0 14px;padding:12px 14px;border:1px dashed #3a4351;border-radius:12px;font-size:13px;color:var(--muted)}.ext-tip summary{cursor:pointer;color:var(--text);font-weight:650}.ext-tip p{line-height:1.5}
 @media print{
  :root{--text:#111;--muted:#444;--line:#bbb;--accent:#2f5d0a}
  body{background:#fff!important;color:#111}
  .card,.pricebox,.stat,.manual-tools,.manual-result{background:#fff!important;box-shadow:none!important;border-color:#bbb!important}
- .top-right,.steps,.step-label,.hero,.actions,.reset-row,.comp-rows,.comp-actions,.adjust-toggle,.search-links,#manualIntro,#manualHeading,#researchHeading,#researchIntro,.footer,#s1,#s2{display:none!important}
+ .top-right,.notice,.ext-tip,.comp-paste,.steps,.step-label,.hero,.actions,.reset-row,.comp-rows,.comp-actions,.adjust-toggle,.search-links,#manualIntro,#manualHeading,#researchHeading,#researchIntro,.footer,#s1,#s2{display:none!important}
  .manual-result strong,.price{color:#111}
  .badge{background:#fff;border-color:#888;color:#111}.warn-list,.comp-info.warn{color:#7a4b00}.status{display:none}
  a{color:#111}
