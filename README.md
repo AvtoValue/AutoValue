@@ -30,7 +30,8 @@ npm test
 | `public/index.html`, `public/css/styles.css` | Page markup and styles |
 | `public/js/core.js` | Pure logic: ad-text parsing, price statistics, search query (shared with tests) |
 | `public/js/app.js` | DOM wiring |
-| `public/js/i18n.js`, `public/js/data.js` | Translations, makes/models and marketplace sites |
+| `public/js/i18n.js` | Translations (English, Slovenian, German, Italian, Croatian) |
+| `public/js/data.js` | Makes and models sold in Europe, including sport versions (e.g. Civic Type R), and marketplace sites |
 | `server/server.js` | Static file server + JSON API |
 | `server/providers/index.js` | Registry of licensed listing providers (empty for now) |
 | `test/` | `node:test` tests for the core logic and the server |
