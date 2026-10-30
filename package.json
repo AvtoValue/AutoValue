@@ -1,6 +1,6 @@
 {
   "name": "autovalue",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "private": true,
   "description": "AutoValue: compare a car against comparable listings before buying or selling.",
   "license": "UNLICENSED",
