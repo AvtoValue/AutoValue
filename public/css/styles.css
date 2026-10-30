@@ -28,3 +28,4 @@
 @media print{.chart{background:#fff!important;border-color:#bbb!important}.chart .grid{stroke:#ddd}.chart .axis-label{fill:#444}.chart .you{stroke:#111}.chart .you-label{fill:#111}.chart .pt{fill:#2f5d0a}.chart .pt.warn{fill:#b07a00}.demo-banner{background:#fff;color:#111}.garage,#share,#saveGarage,#demo{display:none!important}}
 .quick-chosen{min-height:18px;color:var(--accent);font-size:13px;font-weight:650}
 .excluded{margin-top:4px;color:#f3c96b}
+.engine-hint{font-size:12px;line-height:1.45;color:var(--accent)}.engine-hint:empty{display:none}.engine-hint .btn{padding:6px 10px;margin:6px 6px 0 0;font-size:12px}

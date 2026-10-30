@@ -37,6 +37,7 @@ npm run test:e2e
 | `public/js/core.js` | Pure logic: ad-text parsing, price statistics, search query (shared with tests) |
 | `public/js/app.js` | DOM wiring |
 | `public/js/i18n.js` | Translations (English, Slovenian, German, Italian, Croatian) |
+| `public/js/engines.js` | Common engines by maker group (fuel, kW, cm³) used to suggest the engine size from the power |
 | `public/js/data.js` | Makes and models sold in Europe, including sport versions (e.g. Civic Type R), and marketplace sites |
 | `server/server.js` | Static file server + JSON API |
 | `server/providers/index.js` | Registry of licensed listing providers (empty for now) |

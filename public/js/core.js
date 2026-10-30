@@ -165,6 +165,24 @@ function engineSize(cc,make,fuel){
  return hit?hit.size:Math.round(cc/100)*100;
 }
 
+// Engine sizes that fit the entered power, fuel, make and year, from a table of common engines.
+// Returns [{size, cc, names}] with one entry per engine size, most likely first (fewest names last).
+function suggestEngines(car,engines){
+ const fuel=car.fuel==='LPG'?'Petrol':car.fuel;
+ if(!(car.kw>0)||!car.make||!fuel)return [];
+ const bySize=new Map();
+ (engines||[]).forEach(e=>{
+  if(e.fuel!==fuel||!e.makes.includes(car.make))return;
+  if(!e.kw.some(k=>Math.abs(k-car.kw)<=1))return;
+  if(car.year&&e.years&&(car.year<e.years[0]-1||car.year>e.years[1]+1))return;
+  const size=engineSize(e.cc,car.make,fuel);
+  const hit=bySize.get(size)||{size,cc:e.cc,names:[]};
+  if(!hit.names.includes(e.name))hit.names.push(e.name);
+  bySize.set(size,hit);
+ });
+ return [...bySize.values()].sort((a,b)=>a.size-b.size);
+}
+
 // Lists how a comparable ad differs from the user's car: 'year','km','fuel','transmission','power','engine'.
 function comparabilityWarnings(ad,target){
  const w=[];if(!ad||!target)return w;
@@ -340,6 +358,6 @@ function buildVehicleQuery(v){
 // Common engine sizes offered in the form (cm³, shown as litres).
 const ENGINE_SIZES=[600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2700,2800,2900,3000,3200,3500,3700,4000,4200,4400,4700,5000,5500,6000,6500];
 
-const api={ENGINE_SIZES,extractDisplacement,engineSize,KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
+const api={ENGINE_SIZES,extractDisplacement,engineSize,suggestEngines,KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.AVCore=api;
 })(this);

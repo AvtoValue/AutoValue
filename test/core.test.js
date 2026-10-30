@@ -232,3 +232,28 @@ test('power must match within 2 kW', () => {
   assert.deepEqual(core.comparabilityWarnings({ kw: 77 }, { kw: 85 }), ['power']);
   assert.deepEqual(core.comparabilityWarnings({ kw: 110 }, { kw: 103 }), ['power']);
 });
+
+const { engines } = require('../public/js/engines.js');
+const sizes = car => core.suggestEngines(car, engines).map(o => o.size);
+
+test('suggestEngines finds the engine size from make, fuel, power and year', () => {
+  assert.deepEqual(sizes({ make: 'Honda', fuel: 'Petrol', kw: 73, year: 2006 }), [1400]);
+  assert.deepEqual(sizes({ make: 'Honda', fuel: 'Petrol', kw: 103, year: 2008 }), [1800]);
+  assert.deepEqual(sizes({ make: 'Volkswagen', fuel: 'Diesel', kw: 77, year: 2006 }), [1900]);
+  assert.deepEqual(sizes({ make: 'Volkswagen', fuel: 'Diesel', kw: 77, year: 2012 }), [1600]);
+  assert.deepEqual(sizes({ make: 'Volkswagen', fuel: 'Diesel', kw: 77, year: 2009 }), [1600, 1900]);
+  assert.deepEqual(sizes({ make: 'Škoda', fuel: 'Diesel', kw: 110.3, year: 2016 }), [2000]);
+  assert.deepEqual(sizes({ make: 'Fiat', fuel: 'Diesel', kw: 70 }), [1300]);
+  assert.deepEqual(sizes({ make: 'Renault', fuel: 'LPG', kw: 55 }), [1000, 1200]);
+  assert.deepEqual(sizes({ make: 'Tesla', fuel: 'Electric', kw: 200 }), []);
+  assert.deepEqual(sizes({ make: 'Honda', fuel: 'Petrol' }), []);
+});
+
+test('every engine in the table belongs to a known make, fuel and size option', () => {
+  const { makes } = require('../public/js/data.js');
+  for (const e of engines) {
+    for (const m of e.makes) assert.ok(makes.includes(m), e.name + ': ' + m);
+    assert.ok(['Petrol', 'Diesel', 'Hybrid', 'Plug-in hybrid'].includes(e.fuel), e.name);
+    assert.ok(core.ENGINE_SIZES.includes(core.engineSize(e.cc, e.makes[0], e.fuel)), e.name + ' ' + e.cc);
+  }
+});

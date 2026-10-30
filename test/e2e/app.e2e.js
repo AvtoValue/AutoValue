@@ -126,6 +126,42 @@ test('on a phone, tapping a suggestion fills make and model; engine size is comp
   assert.match(result, /Ni upoštevano \(drug motor ali moč\): #1/);
 });
 
+test('engine size is suggested from power, and a manual choice is kept', async t => {
+  const { page } = await openPage(t);
+  await page.click('#next');
+  await page.fill('#quickSearch', 'honda civic');
+  await page.keyboard.press('Enter');
+  await page.selectOption('#year', '2006');
+  await page.selectOption('#fuel', 'Petrol');
+  await page.fill('#powerEntry', '73');
+  assert.equal(await page.inputValue('#engine'), '1400');
+  assert.match(await page.textContent('#engineHint'), /Izbrano glede na moč: 1400 cm³/);
+  // A different power replaces a size the app chose itself.
+  await page.fill('#powerEntry', '103');
+  assert.equal(await page.inputValue('#engine'), '1800');
+  // A size the user picks stays, and the hint offers the usual one.
+  await page.selectOption('#engine', '1600');
+  await page.fill('#powerEntry', '73');
+  assert.equal(await page.inputValue('#engine'), '1600');
+  assert.match(await page.textContent('#engineHint'), /običajno 1400 cm³/);
+  await page.click('#engineHint button');
+  assert.equal(await page.inputValue('#engine'), '1400');
+
+  // Several engines with the same power: offer a choice.
+  await page.fill('#quickSearch', 'volkswagen golf');
+  await page.keyboard.press('Enter');
+  await page.selectOption('#engine', '');
+  await page.selectOption('#year', '2009');
+  await page.selectOption('#fuel', 'Diesel');
+  await page.fill('#powerEntry', '74');
+  assert.equal(await page.inputValue('#engine'), '1900');
+  await page.fill('#powerEntry', '77');
+  assert.equal(await page.inputValue('#engine'), '', 'an automatic choice is cleared when several engines fit');
+  assert.deepEqual(await page.$$eval('#engineHint button', b => b.map(x => x.textContent)), ['Uporabi 1600 cm³ · 1.6 TDI', 'Uporabi 1900 cm³ · 1.9 TDI']);
+  await page.selectOption('#year', '2006');
+  assert.equal(await page.inputValue('#engine'), '1900');
+});
+
 test('seller gets a verdict on the asking price', async t => {
   const { page } = await openPage(t);
   await enterCar(page, { sell: true, price: '19500' });

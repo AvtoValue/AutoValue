@@ -52,6 +52,26 @@ function updateEngineField(){
  $('engineField').classList.toggle('hidden',electric);
  if(electric)$('engine').value='';
 }
+// Suggests the engine size from make, fuel, power and year (js/engines.js). A size the app picked
+// itself may be replaced when the inputs change; a size the user picked is never overwritten.
+let engineAuto=false;
+function suggestEngine(){
+ const s=u(),hint=$('engineHint'),kw=Number($('power').value);
+ const options=core.suggestEngines({make:$('make').value,fuel:$('fuel').value,kw,year:Number($('year').value)||undefined},window.AVEngines.engines);
+ const current=Number($('engine').value);
+ const choose=o=>{$('engine').value=String(o.size);engineAuto=false;suggestEngine();saveState()};
+ const sizeButton=o=>{const b=el('button',{type:'button',className:'btn quiet',textContent:fill(s.engineUse,{size:ccText(o.size)})+' · '+o.names.join(', ')});b.addEventListener('click',()=>choose(o));return b};
+ if(!options.length){if(engineAuto){$('engine').value='';engineAuto=false}hint.replaceChildren();return}
+ if(options.length===1){
+  const o=options[0],info={size:ccText(o.size),name:o.names.join(', '),make:$('make').value};
+  if(!current||engineAuto){$('engine').value=String(o.size);engineAuto=true;hint.replaceChildren(fill(s.engineAuto,info));return}
+  hint.replaceChildren(...(current===o.size?[]:[fill(s.engineUsual,info),el('br'),sizeButton(o)]));
+  return;
+ }
+ // With several possible engines, a size the app chose earlier is no longer certain.
+ if(engineAuto){$('engine').value='';engineAuto=false}
+ hint.replaceChildren(s.engineSeveral,el('br'),...options.map(sizeButton));
+}
 function populateYears(){
  for(let y=new Date().getFullYear();y>=1950;y--)$('year').append(el('option',{value:String(y),textContent:String(y)}));
 }
@@ -108,7 +128,7 @@ function applyLang(){
  $('edit').textContent=s.editBtn;$('copy').textContent=s.copyBtn;
  if(!lastSummary){$('estimatedRangeValue').textContent=s.notAvailable;$('confidenceValue').textContent=s.pendingData}
  $('privacyLink').textContent=s.privacyLink;$('privacyLink').href='privacy.html?lang='+lang();
- $('quickSearchL').textContent=s.quickSearchL;$('engineL').textContent=s.engineL;updateEngineField();$('quickSearch').placeholder=s.quickSearchPh;
+ $('quickSearchL').textContent=s.quickSearchL;$('engineL').textContent=s.engineL;updateEngineField();suggestEngine();$('quickSearch').placeholder=s.quickSearchPh;
  $('adjustToggleL').textContent=s.adjustToggle;$('print').textContent=s.print;$('reset').textContent=s.reset;
  renderBackendStatus();
  buildCompRows();
@@ -465,7 +485,7 @@ function closeSuggestions(){
 }
 function chooseSuggestion(i){
  const sug=suggestions[i];if(!sug)return;
- $('make').value=sug.make;setModels();$('model').value=sug.model;
+ $('make').value=sug.make;setModels();$('model').value=sug.model;suggestEngine();
  $('quickSearch').value=sug.make+' '+sug.model;closeSuggestions();saveState();
  $('quickSearchChosen').textContent='✓ '+u().quickChosen+sug.make+' '+sug.model;
  // Close the phone keyboard; the make and model fields below are now filled.
@@ -488,7 +508,7 @@ const FIELDS=['country','make','model','year','mileage','fuel','trans','powerUni
 let restoring=true,saveTimer;
 function saveState(){
  if(restoring)return;
- const state={v:1,lang:lang(),mode,step,compCount,garageId:currentGarageId||undefined,demo:isDemo||undefined,compared:!!lastSummary,adjust:$('adjustToggle').checked,fields:{},equipment:[...document.querySelectorAll('.equipment-check:checked')].map(c=>c.value),rows:readRows()};
+ const state={v:1,lang:lang(),mode,step,compCount,engineAuto:engineAuto||undefined,garageId:currentGarageId||undefined,demo:isDemo||undefined,compared:!!lastSummary,adjust:$('adjustToggle').checked,fields:{},equipment:[...document.querySelectorAll('.equipment-check:checked')].map(c=>c.value),rows:readRows()};
  FIELDS.forEach(id=>{state.fields[id]=$(id).value});
  try{localStorage.setItem(STORE_KEY,JSON.stringify(state))}catch(e){}
 }
@@ -499,7 +519,7 @@ function restoreState(){
  if(!st||st.v!==1)return;
  try{
   if(translations[st.lang])$('lang').value=st.lang;
-  currentGarageId=typeof st.garageId==='string'?st.garageId:null;isDemo=!!st.demo;
+  currentGarageId=typeof st.garageId==='string'?st.garageId:null;isDemo=!!st.demo;engineAuto=!!st.engineAuto;
   if(st.mode==='buy'||st.mode==='sell'){mode=st.mode;document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('selected',x.dataset.mode===mode));updateModeFields()}
   const f=st.fields||{},set=id=>{if(typeof f[id]==='string')$(id).value=f[id]};
   set('country');set('make');setModels();
@@ -674,7 +694,11 @@ $('quickSearch').addEventListener('keydown',onQuickSearchKey);
 $('quickSearch').addEventListener('blur',()=>setTimeout(closeSuggestions,250));
 $('make').addEventListener('change',()=>{$('quickSearchChosen').textContent=''});
 $('model').addEventListener('change',()=>{$('quickSearchChosen').textContent=''});
-$('fuel').addEventListener('change',updateEngineField);
+$('fuel').addEventListener('change',()=>{updateEngineField();suggestEngine()});
+$('engine').addEventListener('change',()=>{engineAuto=false;suggestEngine()});
+['make','model','year'].forEach(id=>$(id).addEventListener('change',suggestEngine));
+$('powerEntry').addEventListener('input',suggestEngine);
+$('powerUnit').addEventListener('change',suggestEngine);
 $('print').addEventListener('click',()=>window.print());
 $('reset').addEventListener('click',resetAll);
 $('demo').addEventListener('click',loadDemo);
