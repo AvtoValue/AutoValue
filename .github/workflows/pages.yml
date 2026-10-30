@@ -8,11 +8,14 @@ permissions:
   pages: write
   id-token: write
 concurrency:
-  group: pages
+  # Renamed from "pages": a deploy that GitHub never finished (run 41100195998) kept that group busy.
+  group: pages-deploy
   cancel-in-progress: true
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # A Pages deploy normally takes about a minute; don't let a stuck one block publishing for hours.
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

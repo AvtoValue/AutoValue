@@ -1,6 +1,6 @@
 // Offline support: network first so updates show up immediately, cached copy when offline.
 // Bump VERSION when the list of app files changes.
-const VERSION = 'autovalue-v24';
+const VERSION = 'autovalue-v25';
 const APP_FILES = ['./', 'index.html', 'css/styles.css', 'js/i18n.js', 'js/data.js', 'js/engines.js', 'js/core.js', 'js/app.js', 'privacy.html', 'js/legal.js', 'manifest.webmanifest', 'icons/icon-192-v2.png', 'icons/icon-512-v2.png', 'icons/apple-touch-icon-v2.png'];
 
 self.addEventListener('install', event => {
