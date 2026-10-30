@@ -240,6 +240,43 @@ function searchVehicles(query,catalogue,limit){
  return found.sort((a,b)=>b.score-a.score||a.len-b.len).slice(0,limit||8).map(({make,model})=>({make,model}));
 }
 
+// Share links carry the report state as base64url-encoded UTF-8 JSON in the URL fragment.
+function encodeState(obj){
+ const bytes=new TextEncoder().encode(JSON.stringify(obj));
+ let bin='';bytes.forEach(b=>{bin+=String.fromCharCode(b)});
+ return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function decodeState(str){
+ const b64=String(str).replace(/-/g,'+').replace(/_/g,'/');
+ const bin=atob(b64+'='.repeat((4-b64.length%4)%4));
+ return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0))));
+}
+
+// Round axis ticks (1, 2, 2.5 or 5 × 10^n) covering [min, max] with about `count` steps.
+function niceTicks(min,max,count){
+ if(!(max>min)){const v=Number.isFinite(min)?min:0;return [v]}
+ const raw=(max-min)/Math.max(1,count||5),mag=Math.pow(10,Math.floor(Math.log10(raw)));
+ const step=[1,2,2.5,5,10].map(f=>f*mag).find(st=>st>=raw);
+ const ticks=[];
+ for(let v=Math.floor(min/step)*step;v<=max+step*1e-9;v+=step)ticks.push(Math.round(v*1e6)/1e6);
+ if(ticks[ticks.length-1]<max)ticks.push(ticks[ticks.length-1]+step);
+ return ticks;
+}
+
+// Picks the market and page language from the browser language, e.g. "de-AT" -> Austria, German.
+function marketForLocale(locale){
+ const [l,r]=String(locale||'').toLowerCase().split(/[-_]/);
+ if(l==='sl')return {country:'SI',lang:'sl'};
+ if(l==='hr')return {country:'HR',lang:'hr'};
+ if(l==='it')return {country:'IT',lang:'it'};
+ if(l==='de')return {country:r==='at'?'AT':'DE',lang:'de'};
+ const other={fr:'FR',nl:'NL',es:'ES',pl:'PL'};
+ if(other[l])return {country:other[l],lang:'en'};
+ // Plain English is common on European devices, so only British English picks a market.
+ if(l==='en'&&(r==='gb'||r==='uk'))return {country:'UK',lang:'en'};
+ return null;
+}
+
 const FUEL_TERMS={Diesel:['diesel','dizel','TDI','CDI','dCi','JTD','i-DTEC','HDi'],Petrol:['petrol','bencin','benzin','gasoline','TSI','TFSI','VTEC'],Hybrid:['hybrid','hibrid'],'Plug-in hybrid':['plug-in hybrid','PHEV'],Electric:['electric','električni','električni pogon'],LPG:['LPG','plin'],Other:['fuel']};
 
 // Builds the Google query used for "site:" searches on marketplace portals.
@@ -259,6 +296,6 @@ function buildVehicleQuery(v){
  return parts.join(' ');
 }
 
-const api={KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,buildVehicleQuery};
+const api={KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.AVCore=api;
 })(this);

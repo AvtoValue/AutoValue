@@ -23,6 +23,12 @@ Compare a car against comparable listings before you buy or sell. Early prototyp
 npm test
 ```
 
+Browser tests drive the whole app in Chromium (they need the `playwright` package; CI installs it):
+
+```bash
+npm run test:e2e
+```
+
 ## Layout
 
 | Path | Contents |
@@ -56,6 +62,12 @@ From the (adjusted) prices it reports range, median and mean. With four or more 
 from the lower quartile to the median; sellers see whether their asking price is within
 ±max(€500, 5%) of the median. Confidence depends on the number of ads and is lowered when prices
 vary by more than 25%.
+
+The report includes a price-vs-mileage chart (inline SVG) with the user's car, the suggested
+range or asking price and the trend line. A report can be shared as a link: its state is
+base64url-encoded in the URL fragment (the VIN is left out), so nothing is stored on a server.
+*My garage* keeps up to 20 valuations in the browser; *See an example* opens a report with
+made-up ads, and on a first visit the market and language follow the browser language.
 
 Other conveniences: a quick search for make and model ("civic ty" → Honda Civic Type R), entries
 saved in the browser (localStorage) so a reload keeps them, and a print / PDF view of the report.
