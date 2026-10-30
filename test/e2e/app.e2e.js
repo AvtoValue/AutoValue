@@ -136,6 +136,18 @@ test('a shared link rebuilds the report elsewhere without the VIN', async t => {
   assert.match(await other.textContent('#notice'), /poškodovana/);
 });
 
+test('a shared link with damaged ad data still opens the report', async t => {
+  const { page } = await openPage(t);
+  const { encodeState } = require('../../public/js/core.js');
+  const payload = { v: 1, fields: { make: 'BMW', model: 'M3', year: '2019', mileage: '50000' },
+    rows: [{ price: '30000', meta: '{broken' }, { price: '31000', meta: JSON.stringify({ km: null, year: 'x' }) }, { link: 'javascript:alert(1)', price: '32000', meta: JSON.stringify({ km: 40000 }) }] };
+  await page.goto(base + '#r=' + encodeState(payload));
+  await page.waitForLoadState('load');
+  assert.equal(await page.textContent('#carSummary'), 'BMW M3');
+  assert.match(await page.innerText('#manualResult'), /3/);
+  assert.equal(await page.inputValue('#link3'), '');
+});
+
 test('the example opens a complete report and is not saved to the garage', async t => {
   const { page } = await openPage(t);
   await page.click('#demo');
@@ -169,6 +181,7 @@ test('every language translates the main buttons', async t => {
     await page.selectOption('#lang', lang);
     const labels = await page.$$eval('#edit, #copy, #share, #print, #comparePrices', b => b.map(x => x.textContent).join('|'));
     assert.ok(!seen.has(labels), lang + ' repeats another language: ' + labels);
+    assert.ok(!/Early prototype|Know the value/.test((await page.textContent('.footer')) + (await page.title())) || lang === 'en', lang + ' footer or title is English');
     seen.add(labels);
   }
 });
