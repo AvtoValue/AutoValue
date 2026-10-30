@@ -83,6 +83,35 @@ test('buyer flow: quick search, ad parsing, adjustment, chart and folded rows', 
   assert.ok(await page.isVisible('#text2'));
 });
 
+test('on a phone, tapping a suggestion fills make and model; engine size is compared', async t => {
+  const { devices } = require('playwright');
+  const { page } = await openPage(t, { ...devices['iPhone 13'], locale: 'sl-SI' });
+  await page.tap('#next');
+  await page.tap('#quickSearch');
+  await page.keyboard.type('honda civic');
+  assert.deepEqual(await page.$$eval('#quickSearchList li', l => l.map(x => x.textContent)), ['Honda Civic', 'Honda Civic Type R', 'Honda Civic Tourer']);
+  await page.tap('#quickSearchList li:nth-child(2)');
+  assert.equal(await page.inputValue('#model'), 'Civic Type R');
+  assert.match(await page.textContent('#quickSearchChosen'), /Izbrano: Honda Civic Type R/);
+
+  await page.selectOption('#model', 'Civic');
+  await page.selectOption('#fuel', 'Petrol');
+  assert.equal(await page.textContent('#engine option[value="1400"]'), '1,4 l (1400 cm³)');
+  await page.selectOption('#engine', '1400');
+  await page.selectOption('#fuel', 'Electric');
+  assert.ok(await page.isHidden('#engineField'));
+  await page.selectOption('#fuel', 'Petrol');
+  await page.selectOption('#engine', '1400');
+  await page.selectOption('#year', '2006');
+  await page.fill('#mileage', '180000');
+  await page.tap('#analyse');
+  assert.match(await page.textContent('#metaSummary'), /1,4 l/);
+  await page.fill('#text1', 'Honda Civic 1.8 i-VTEC\nCena: 5.900 €\nLetnik: 2006\nPrevoženi km: 175.000\nGorivo: bencin');
+  assert.match(await page.textContent('#info1'), /1,8 l .*⚠ druga prostornina motorja/);
+  await page.fill('#text2', 'Honda Civic 1.4 i-VTEC\nCena: 4.900 €\nLetnik: 2006\nPrevoženi km: 190.000\nGorivo: bencin');
+  assert.doesNotMatch(await page.textContent('#info2'), /⚠/);
+});
+
 test('seller gets a verdict on the asking price', async t => {
   const { page } = await openPage(t);
   await enterCar(page, { sell: true, price: '19500' });

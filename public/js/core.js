@@ -80,6 +80,21 @@ function extractPower(t){
  return d;
 }
 
+// Engine displacement in cm³, from "Prostornina motorja: 1.798 ccm", "Hubraum 1598 cm³" or a model
+// name such as "1.4 i-VTEC" / "2,0 TDI". Values below 10 are litres.
+const CC_LABEL='prostornina(?:\\s*motorja)?|delovna\\s*prostornina|hubraum|cilindrata|engine\\s*size|displacement|capacity|obujam(?:\\s*motora)?|radni\\s*obujam|cylindr[ée]e';
+const ENGINE_WORDS='TDI|TSI|TFSI|FSI|CDI|CRDi|TDCi|dCi|HDi|BlueHDi|JTDm?|MultiJet|i-?VTEC|VTEC|i-?DTEC|i-?CTDi|MPI|T?-?GDI|VVT-?i|D-4D|SkyActiv-?[GDX]?|EcoBoost|PureTech|TCe|e-?HDi|TwinAir|MultiAir|THP|VTi|16V|8V|turbo|benzin|bencin|dizel|diesel|[idDT]';
+function extractDisplacement(t){
+ const ok=cc=>cc>=500&&cc<=8500?Math.round(cc):undefined;
+ let m=t.match(new RegExp('(?:'+CC_LABEL+')[^0-9\\n]{0,25}('+NUM+')\\s*(ccm|cm3|cm³|ccm³|cc|l\\b)?','i'));
+ if(m){const v=parseNumber(m[1]);const cc=v<10?v*1000:v;if(ok(cc))return ok(cc)}
+ m=t.match(/\b(\d{3,4}|\d\.\d{3})\s*(?:ccm|cm3|cm³|ccm³|cc)\b/i);
+ if(m){const v=parseNumber(m[1]);if(ok(v))return ok(v)}
+ // "l/100 km" is fuel consumption, not engine size.
+ m=t.match(new RegExp('(?:^|[\\s(/])(\\d[.,]\\d\\d?)\\s*(?:l\\b(?!\\s*/)|(?:'+ENGINE_WORDS+')\\b)'));
+ if(m){const v=parseNumber(m[1].replace(',','.'));if(v>=0.6&&v<=8.5)return Math.round(v*1000)}
+}
+
 const FUEL_RULES=[
  ['Plug-in hybrid',/plug-?in|\bPHEV\b|priključn/i],
  ['Hybrid',/hybrid|hibrid|\bHEV\b|ibrida/i],
@@ -125,10 +140,11 @@ function extractAd(text){
  Object.assign(d,extractPower(t));
  const fuel=extractFuel(t);if(fuel)d.fuel=fuel;
  const trans=extractTransmission(t);if(trans)d.transmission=trans;
+ const cc=extractDisplacement(t);if(cc)d.cc=cc;
  return d;
 }
 
-// Lists how a comparable ad differs from the user's car: 'year','km','fuel','transmission','power'.
+// Lists how a comparable ad differs from the user's car: 'year','km','fuel','transmission','power','engine'.
 function comparabilityWarnings(ad,target){
  const w=[];if(!ad||!target)return w;
  if(ad.year&&target.year&&Math.abs(ad.year-target.year)>1)w.push('year');
@@ -137,6 +153,8 @@ function comparabilityWarnings(ad,target){
  if(known(ad.fuel)&&known(target.fuel)&&ad.fuel!==target.fuel)w.push('fuel');
  if(known(ad.transmission)&&known(target.transmission)&&ad.transmission!==target.transmission)w.push('transmission');
  if(ad.kw&&target.kw&&Math.abs(ad.kw-target.kw)/target.kw>0.15)w.push('power');
+ // Nominal sizes (1.4 l = 1400) and real ones (1398 cm³) differ slightly; 1.4 vs 1.6 does not pass.
+ if(ad.cc&&target.cc&&Math.abs(ad.cc-target.cc)>120)w.push('engine');
  return w;
 }
 
@@ -289,6 +307,7 @@ function buildVehicleQuery(v){
  const fuels=FUEL_TERMS[v.fuel]||[v.fuel];
  if(v.fuel)parts.push('('+fuels.map(x=>'"'+x+'"').join(' OR ')+')');
  if(v.mode==='sell'&&v.trim)parts.push('"'+v.trim+'"');
+ if(v.cc>0){const l=(Math.round(v.cc/100)/10).toFixed(1);parts.push('("'+l+'" OR "'+l.replace('.',',')+'")')}
  if(v.hp>0){const hp=Math.round(v.hp),kw=Math.round(v.kw);parts.push('("'+hp+' KM" OR "'+hp+' PS" OR "'+hp+' hp" OR "'+kw+' kW")')}
  if(v.mode==='sell'&&v.equipment&&v.equipment.length)parts.push('('+v.equipment.map(x=>'"'+x+'"').join(' OR ')+')');
  if(v.transmission==='Manual')parts.push('(manual OR ročni OR Schaltgetriebe OR cambio manuale OR mjenjač)');
@@ -296,6 +315,9 @@ function buildVehicleQuery(v){
  return parts.join(' ');
 }
 
-const api={KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
+// Common engine sizes offered in the form (cm³, shown as litres).
+const ENGINE_SIZES=[600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2700,2800,2900,3000,3200,3500,3700,4000,4200,4400,4700,5000,5500,6000,6500];
+
+const api={ENGINE_SIZES,extractDisplacement,KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.AVCore=api;
 })(this);

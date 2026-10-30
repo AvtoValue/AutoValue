@@ -18,7 +18,7 @@ Gorivo: dizel motor
 Moč motorja: 85 kW (116 KM)
 Menjalnik: ročni menjalnik (5 pr.)
 Električni pomik stekel`);
-  assert.deepEqual(d, { price: 12990, year: 2017, km: 148000, kw: 85, hp: 116, fuel: 'Diesel', transmission: 'Manual' });
+  assert.deepEqual(d, { price: 12990, year: 2017, km: 148000, kw: 85, hp: 116, fuel: 'Diesel', transmission: 'Manual', cc: 1600 });
 });
 
 test('extractAd reads an English AutoScout24 style ad', () => {
@@ -185,4 +185,23 @@ test('marketForLocale maps browser languages to markets', () => {
   assert.equal(core.marketForLocale('ja-JP'), null);
   assert.equal(core.marketForLocale('en-US'), null);
   assert.equal(core.marketForLocale(''), null);
+});
+
+test('extractDisplacement reads engine size from labels, cm³ values and model names', () => {
+  const cases = {
+    'Honda Civic 1.4 i-VTEC Sport': 1400, 'Honda Civic 1.8 i-VTEC Type S': 1800,
+    'Prostornina motorja: 1.798 ccm': 1798, 'Hubraum 1.598 cm³': 1598, 'Cilindrata 1968 cc': 1968,
+    'obujam motora 1.995 cm3': 1995, 'VW Golf 2,0 TDI': 2000, 'Fiat 500 0.9 TwinAir': 900,
+    'Toyota Yaris 1.33 VVT-i': 1330, 'Renault Clio 1.5 dCi': 1500, 'motor 2.5 l': 2500,
+  };
+  for (const [text, cc] of Object.entries(cases)) assert.equal(core.extractDisplacement(text), cc, text);
+  for (const text of ['Cena 1.400 €', 'Poraba 5.4 l/100 km', 'BMW 320d', 'nothing']) assert.equal(core.extractDisplacement(text), undefined, text);
+});
+
+test('extractAd includes engine size and flags a different engine', () => {
+  const d = core.extractAd('Honda Civic 1.8 i-VTEC\nCena: 6.900 €\nLetnik: 2006\nPrevoženi km: 180.000\nGorivo: bencin\nPoraba 6,9 l/100 km');
+  assert.equal(d.cc, 1800);
+  assert.deepEqual(core.comparabilityWarnings(d, { year: 2006, cc: 1400 }), ['engine']);
+  assert.deepEqual(core.comparabilityWarnings({ cc: 1398 }, { cc: 1400 }), []);
+  assert.match(core.buildVehicleQuery({ make: 'Honda', model: 'Civic', cc: 1400 }), /\("1\.4" OR "1,4"\)/);
 });
