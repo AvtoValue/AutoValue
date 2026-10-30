@@ -109,3 +109,53 @@ test('isValidVinFormat and power conversion', () => {
   assert.equal(Math.round(core.kwToHp(100)), 136);
   assert.equal(Math.round(core.hpToKw(136)), 100);
 });
+
+const { modelOptions, OTHER_MAKE, OTHER_MODEL } = require('../public/js/data.js');
+const catalogue = {};
+for (const make of Object.keys(modelOptions)) if (make !== OTHER_MAKE) catalogue[make] = modelOptions[make].filter(m => m !== OTHER_MODEL);
+const top = q => core.searchVehicles(q, catalogue, 3).map(x => x.make + ' ' + x.model);
+
+test('searchVehicles finds models from partial and compact input', () => {
+  assert.equal(top('civic ty')[0], 'Honda Civic Type R');
+  assert.equal(top('civic')[0], 'Honda Civic');
+  assert.equal(top('golf r')[0], 'Volkswagen Golf R');
+  assert.equal(top('c63')[0], 'Mercedes-Benz C 63 AMG');
+  assert.equal(top('skoda octavia rs')[0], 'Škoda Octavia RS');
+  assert.equal(top('megane rs')[0], 'Renault Mégane R.S.');
+  assert.equal(top('id3')[0], 'Volkswagen ID.3');
+  assert.deepEqual(top('xyz'), []);
+  assert.deepEqual(top('   '), []);
+});
+
+const synthetic = (pairs, noise = []) => pairs.map(([year, km], i) => ({ year, km, price: 10000 + 2000 * (year - 2016) - 0.05 * (km - 100000) + (noise[i] || 0) }));
+
+test('depreciationModel recovers value lost per year and per km', () => {
+  const m = core.depreciationModel(synthetic([[2016, 150000], [2017, 120000], [2018, 100000], [2018, 140000], [2019, 80000], [2020, 60000], [2017, 90000]]));
+  assert.ok(Math.abs(m.perYear - 2000) < 1);
+  assert.ok(Math.abs(m.perKm + 0.05) < 1e-6);
+  assert.equal(m.n, 7);
+});
+
+test('depreciationModel uses mileage alone when every ad has the same year', () => {
+  const m = core.depreciationModel(synthetic([[2018, 60000], [2018, 80000], [2018, 100000], [2018, 120000], [2018, 140000]]));
+  assert.equal(m.perYear, 0);
+  assert.ok(Math.abs(m.perKm + 0.05) < 1e-6);
+});
+
+test('depreciationModel refuses thin, collinear or implausible data', () => {
+  assert.equal(core.depreciationModel(synthetic([[2016, 150000], [2017, 120000], [2018, 100000], [2019, 80000]])), null);
+  // Mileage exactly follows year, so their effects cannot be separated.
+  assert.equal(core.depreciationModel(synthetic([[2016, 160000], [2017, 140000], [2018, 120000], [2019, 100000], [2020, 80000]])), null);
+  // Prices rising with mileage are implausible.
+  const rising = [60000, 80000, 100000, 120000, 140000].map((km, i) => ({ year: 2018, km, price: 10000 + i * 1000 }));
+  assert.equal(core.depreciationModel(rising), null);
+  assert.equal(core.depreciationModel([]), null);
+});
+
+test('adjustPrice moves a price to the target car and caps large changes', () => {
+  const m = { perYear: 1000, perKm: -0.05, n: 6 };
+  assert.equal(core.adjustPrice({ price: 10000, year: 2017, km: 120000 }, { year: 2018, km: 100000 }, m), 12000);
+  assert.equal(core.adjustPrice({ price: 10000, year: 2010, km: 300000 }, { year: 2018, km: 100000 }, m), 14000);
+  assert.equal(core.adjustPrice({ price: 10000 }, { year: 2018, km: 100000 }, m), 10000);
+  assert.equal(core.adjustPrice({ price: 10000, year: 2017, km: 1 }, { year: 2018, km: 100000 }, null), 10000);
+});
