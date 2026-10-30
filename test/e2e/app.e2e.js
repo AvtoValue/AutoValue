@@ -117,6 +117,13 @@ test('on a phone, tapping a suggestion fills make and model; engine size is comp
   assert.match(await page.textContent('#info2'), /1398 cm³/);
   assert.doesNotMatch(await page.textContent('#info2'), /⚠/);
   assert.doesNotMatch(await page.getAttribute('#searchLinks a', 'href'), /1400|1%2C4|1\.4/);
+  // Honda sells its 1339 cm³ engine as 1.4, so it matches; the 1.8 ad is left out of the price.
+  await page.fill('#text3', 'Honda Civic\nProstornina motorja: 1.339 ccm\nCena: 5.300 €\nLetnik: 2006\nPrevoženi km: 170.000\nGorivo: bencin');
+  assert.doesNotMatch(await page.textContent('#info3'), /⚠/);
+  await page.tap('#comparePrices');
+  const result = await page.innerText('#manualResult');
+  assert.match(result, /Število upoštevanih oglasov: 2/);
+  assert.match(result, /Ni upoštevano \(drug motor ali moč\): #1/);
 });
 
 test('seller gets a verdict on the asking price', async t => {

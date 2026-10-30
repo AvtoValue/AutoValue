@@ -129,7 +129,7 @@ function checkVin(){
 
 // --- Report ---
 function target(){
- return {year:Number($('year').value)||undefined,km:Number($('mileage').value)||undefined,fuel:$('fuel').value,transmission:$('trans').value,kw:Number($('power').value)||undefined,cc:Number($('engine').value)||undefined};
+ return {make:$('make').value,year:Number($('year').value)||undefined,km:Number($('mileage').value)||undefined,fuel:$('fuel').value,transmission:$('trans').value,kw:Number($('power').value)||undefined,cc:Number($('engine').value)||undefined};
 }
 function renderReportLabels(){
  const s=u();
@@ -286,14 +286,18 @@ function parseAdText(i){
 }
 
 // --- Comparison ---
-let lastSummary=null;
+let lastSummary=null,lastExcluded=[];
 function comparePrices(){
  const ads=readRows().map((r,k)=>{const meta=parseMeta(r.meta);return {index:k+1,link:r.link.trim(),price:Number(r.price),meta}}).filter(a=>Number.isFinite(a.price)&&a.price>0);
  const tgt=target(),adjust=$('adjustToggle').checked,withPrice=a=>Object.assign({},a.meta,{price:a.price});
- const model=adjust?core.depreciationModel(ads.map(withPrice)):null;
- ads.forEach(a=>{a.adjusted=core.adjustPrice(withPrice(a),tgt,model)});
- const result=core.summarizeComparison({prices:ads.map(a=>a.adjusted),mode,askingPrice:Number($('price').value)});
- lastSummary=result?{result,ads,model,adjust}:null;
+ // A different engine size or power is a different car: such ads are left out of the price.
+ ads.forEach(a=>{a.excludedFor=core.comparabilityWarnings(a.meta,tgt).filter(w=>w==='engine'||w==='power')});
+ const used=ads.filter(a=>!a.excludedFor.length);
+ lastExcluded=ads.filter(a=>a.excludedFor.length);
+ const model=adjust?core.depreciationModel(used.map(withPrice)):null;
+ used.forEach(a=>{a.adjusted=core.adjustPrice(withPrice(a),tgt,model)});
+ const result=core.summarizeComparison({prices:used.map(a=>a.adjusted),mode,askingPrice:Number($('price').value)});
+ lastSummary=result?{result,ads:used,model,adjust}:null;
  for(let i=1;$('link'+i);i++)collapseRow(i);
  renderComparison();
  saveState();
@@ -301,7 +305,12 @@ function comparePrices(){
 const fill=(text,values)=>text.replace(/\{(\w+)\}/g,(m,k)=>values[k]!==undefined?values[k]:m);
 function renderComparison(){
  const s=u(),out=$('manualResult');
- if(!lastSummary){out.textContent=s.noPrices;return}
+ const excludedLine=()=>el('div',{className:'excluded'},[el('strong',{textContent:s.excludedLabel}),lastExcluded.map(a=>'#'+a.index+' ('+money(a.price)+'): '+a.excludedFor.map(x=>s.warn[x]).join(', ')).join(' · ')]);
+ if(!lastSummary){
+  if(lastExcluded.length)out.replaceChildren(el('div',{textContent:s.allExcluded}),excludedLine());
+  else out.textContent=s.noPrices;
+  return;
+ }
  const {result,ads}=lastSummary,st=result.stats;
  const line=(label,value)=>el('div',{},[el('strong',{textContent:label}),value]);
  const nodes=[
@@ -311,6 +320,7 @@ function renderComparison(){
   line(s.count,String(st.n)),
  ];
  if(st.outliers.length)nodes.push(line(s.outliers,st.outliers.map(money).join(', ')));
+ if(lastExcluded.length)nodes.push(excludedLine());
  nodes.push(line(s.confidence,s.conf[result.confidence]+(result.highSpread?s.spread:'')));
  const {model}=lastSummary;
  if(model){

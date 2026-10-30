@@ -145,6 +145,26 @@ function extractAd(text){
  return d;
 }
 
+// Engines whose marketed size differs from plain rounding to 100 cm³. Everything else rounds
+// mathematically (1300–1349 → 1300, 1350–1449 → 1400).
+const ENGINE_EXCEPTIONS=[
+ // Honda 1339 cm³ petrol (Civic 2006–2011, Jazz, City) is sold as 1.4; the 1.3 IMA hybrids are 1.3.
+ {makes:['Honda'],cc:[1339],fuelNot:'Hybrid',size:1400},
+ // 1.3 Multijet / CDTI / DDiS diesel used by Fiat, Opel, Suzuki, Lancia, Alfa Romeo and others.
+ {cc:[1248],fuel:'Diesel',size:1300},
+ // Renault/Dacia/Nissan 1.2 16V petrol.
+ {makes:['Renault','Dacia','Nissan'],cc:[1149],size:1200},
+ // Mercedes-Benz 2.2 CDI / 220 d.
+ {makes:['Mercedes-Benz'],cc:[2143,2148,2151],size:2200},
+ // Mitsubishi 2.2 DI-D (Outlander, ASX).
+ {makes:['Mitsubishi'],cc:[2268],size:2200},
+];
+function engineSize(cc,make,fuel){
+ if(!(cc>0))return undefined;
+ const hit=ENGINE_EXCEPTIONS.find(e=>e.cc.some(x=>Math.abs(x-cc)<=2)&&(!e.makes||e.makes.includes(make))&&(!e.fuel||e.fuel===fuel)&&(!e.fuelNot||e.fuelNot!==fuel));
+ return hit?hit.size:Math.round(cc/100)*100;
+}
+
 // Lists how a comparable ad differs from the user's car: 'year','km','fuel','transmission','power','engine'.
 function comparabilityWarnings(ad,target){
  const w=[];if(!ad||!target)return w;
@@ -153,10 +173,11 @@ function comparabilityWarnings(ad,target){
  const known=v=>v&&v!=='Other';
  if(known(ad.fuel)&&known(target.fuel)&&ad.fuel!==target.fuel)w.push('fuel');
  if(known(ad.transmission)&&known(target.transmission)&&ad.transmission!==target.transmission)w.push('transmission');
- if(ad.kw&&target.kw&&Math.abs(ad.kw-target.kw)/target.kw>0.15)w.push('power');
- // The user picks a size to the nearest 100 cm³; the ad's exact figure (1798) must round to the
- // same value (1800). 1339 or 1493 do not count as 1400.
- if(ad.cc&&target.cc&&Math.round(ad.cc/100)!==Math.round(target.cc/100))w.push('engine');
+ // Power must match the user's car; ±2 kW only absorbs rounding between KM/PS and kW.
+ if(ad.kw&&target.kw&&Math.abs(ad.kw-target.kw)>2)w.push('power');
+ // The user picks a size to the nearest 100 cm³; the ad's exact figure (1798) must give the same
+ // size (1800), using the manufacturer's size where it differs (Honda 1339 → 1400).
+ if(ad.cc&&target.cc&&engineSize(ad.cc,target.make,ad.fuel||target.fuel)!==target.cc)w.push('engine');
  return w;
 }
 
@@ -319,6 +340,6 @@ function buildVehicleQuery(v){
 // Common engine sizes offered in the form (cm³, shown as litres).
 const ENGINE_SIZES=[600,700,800,900,1000,1100,1200,1300,1400,1500,1600,1700,1800,1900,2000,2100,2200,2300,2400,2500,2700,2800,2900,3000,3200,3500,3700,4000,4200,4400,4700,5000,5500,6000,6500];
 
-const api={ENGINE_SIZES,extractDisplacement,KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
+const api={ENGINE_SIZES,extractDisplacement,engineSize,KW_TO_HP,kwToHp,hpToKw,isValidVinFormat,parseNumber,extractAd,comparabilityWarnings,priceStats,summarizeComparison,depreciationModel,adjustPrice,searchVehicles,encodeState,decodeState,niceTicks,marketForLocale,buildVehicleQuery};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.AVCore=api;
 })(this);

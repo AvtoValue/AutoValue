@@ -56,7 +56,7 @@ test('extractAd returns an empty object for text without data', () => {
 
 test('comparabilityWarnings flags year, mileage, fuel, transmission and power differences', () => {
   const tgt = { year: 2018, km: 100000, fuel: 'Diesel', transmission: 'Manual', kw: 100 };
-  assert.deepEqual(core.comparabilityWarnings({ year: 2019, km: 140000, fuel: 'Diesel', transmission: 'Manual', kw: 110 }, tgt), []);
+  assert.deepEqual(core.comparabilityWarnings({ year: 2019, km: 140000, fuel: 'Diesel', transmission: 'Manual', kw: 101 }, tgt), []);
   assert.deepEqual(core.comparabilityWarnings({ year: 2015, km: 200000, fuel: 'Petrol', transmission: 'Automatic', kw: 140 }, tgt), ['year', 'km', 'fuel', 'transmission', 'power']);
   assert.deepEqual(core.comparabilityWarnings({ fuel: 'Petrol' }, { fuel: 'Other' }), []);
 });
@@ -212,4 +212,23 @@ test('extractAd includes engine size and flags a different engine', () => {
   for (const [cc, target] of [[1493, 1400], [1339, 1400], [1498, 1400], [1598, 1800], [1851, 1800]])
     assert.deepEqual(core.comparabilityWarnings(exact(cc), { cc: target }), ['engine'], cc + ' vs ' + target);
   assert.deepEqual(core.comparabilityWarnings(core.extractAd('Civic 1.5 i-VTEC'), { cc: 1400 }), ['engine']);
+});
+
+test('engineSize rounds mathematically except for engines sold under another size', () => {
+  assert.equal(core.engineSize(1349, 'Toyota', 'Petrol'), 1300);
+  assert.equal(core.engineSize(1350, 'Toyota', 'Petrol'), 1400);
+  assert.equal(core.engineSize(1798, 'Honda', 'Petrol'), 1800);
+  assert.equal(core.engineSize(1339, 'Honda', 'Petrol'), 1400);
+  assert.equal(core.engineSize(1339, 'Honda', 'Hybrid'), 1300);
+  assert.equal(core.engineSize(1248, 'Fiat', 'Diesel'), 1300);
+  assert.equal(core.engineSize(1248, 'Hyundai', 'Petrol'), 1200);
+  assert.equal(core.engineSize(2143, 'Mercedes-Benz', 'Diesel'), 2200);
+  assert.deepEqual(core.comparabilityWarnings({ cc: 1339, fuel: 'Petrol' }, { make: 'Honda', cc: 1400, fuel: 'Petrol' }), []);
+  assert.deepEqual(core.comparabilityWarnings({ cc: 1339, fuel: 'Petrol' }, { make: 'Toyota', cc: 1400, fuel: 'Petrol' }), ['engine']);
+});
+
+test('power must match within 2 kW', () => {
+  assert.deepEqual(core.comparabilityWarnings({ kw: 85.3 }, { kw: 85 }), []);
+  assert.deepEqual(core.comparabilityWarnings({ kw: 77 }, { kw: 85 }), ['power']);
+  assert.deepEqual(core.comparabilityWarnings({ kw: 110 }, { kw: 103 }), ['power']);
 });
