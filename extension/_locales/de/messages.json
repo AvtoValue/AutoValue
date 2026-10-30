@@ -1,0 +1,11 @@
+{
+  "name": {
+    "message": "AutoValue – Angebot senden"
+  },
+  "description": {
+    "message": "Fügt das angezeigte Autoangebot mit einem Klick deinem AutoValue-Preisvergleich hinzu."
+  },
+  "actionTitle": {
+    "message": "Dieses Angebot an AutoValue senden"
+  }
+}

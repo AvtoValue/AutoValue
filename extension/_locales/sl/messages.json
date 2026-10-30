@@ -1,0 +1,11 @@
+{
+  "name": {
+    "message": "AutoValue – pošlji oglas"
+  },
+  "description": {
+    "message": "Z enim klikom doda avto oglas, ki ga gledaš, v primerjavo cen AutoValue."
+  },
+  "actionTitle": {
+    "message": "Pošlji ta oglas v AutoValue"
+  }
+}

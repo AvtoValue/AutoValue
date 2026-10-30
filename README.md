@@ -36,6 +36,8 @@ npm test
 | `server/providers/index.js` | Registry of licensed listing providers (empty for now) |
 | `public/manifest.webmanifest`, `public/sw.js`, `public/icons/` | Installable app, offline cache and share target |
 | `extension/` | Browser extension that sends the open ad to AutoValue |
+| `public/privacy.html` | Privacy policy and terms of use (5 languages) |
+| `docs/chrome-web-store/` | Store listing texts, permission justifications and images for publishing the extension |
 | `test/` | `node:test` tests for the core logic and the server |
 
 ## How the comparison works

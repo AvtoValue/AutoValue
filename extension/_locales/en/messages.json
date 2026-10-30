@@ -1,0 +1,11 @@
+{
+  "name": {
+    "message": "AutoValue – send ad"
+  },
+  "description": {
+    "message": "Adds the car ad you are viewing to your AutoValue price comparison with one click."
+  },
+  "actionTitle": {
+    "message": "Send this ad to AutoValue"
+  }
+}
