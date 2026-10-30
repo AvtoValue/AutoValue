@@ -2,7 +2,7 @@
 (function(){
 'use strict';
 const {translations,ui}=window.AVI18n;
-const {modelOptions,marketSites}=window.AVData;
+const {makes,modelOptions,marketSites,OTHER_MAKE,OTHER_MODEL}=window.AVData;
 const core=window.AVCore;
 const $=id=>document.getElementById(id);
 const MAX_COMPS=10;
@@ -15,14 +15,31 @@ const locale=()=>({sl:'sl-SI',de:'de-DE',it:'it-IT',hr:'hr-HR'})[lang()]||'en-IE
 const money=n=>new Intl.NumberFormat(locale(),{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(n);
 const el=(tag,props,children)=>{const e=Object.assign(document.createElement(tag),props||{});(children||[]).forEach(c=>e.append(c));return e};
 const selectedEquipment=()=>[...document.querySelectorAll('.equipment-check:checked')].map(x=>x.parentElement.innerText.trim());
+const optText=id=>$(id).selectedOptions[0]?$(id).selectedOptions[0].text:'';
+// "Other" placeholders are not real names, so they are left out of searches.
+const realMake=()=>$('make').value===OTHER_MAKE?'':$('make').value.trim();
+const realModel=()=>$('model').value===OTHER_MODEL?'':$('model').value.trim();
 
 // --- Vehicle dropdowns and power ---
 function setFirstOption(select,text){if(select.options.length)select.options[0].textContent=text}
+function populateMakes(){
+ makes.forEach(name=>$('make').append(el('option',{value:name,textContent:name})));
+}
 function setModels(){
  const m=$('make').value,model=$('model');
  model.replaceChildren(el('option',{value:'',textContent:m?u().chooseModel:u().chooseMakeFirst}));
- (modelOptions[m]||[]).forEach(name=>model.append(el('option',{value:name,textContent:name})));
+ (modelOptions[m]||[]).forEach(name=>model.append(el('option',{value:name,textContent:name===OTHER_MODEL?u().otherModel:name})));
  model.disabled=!m;
+}
+// Option values stay in English (the logic uses them); only the visible labels are translated.
+function translateOptions(){
+ const o=u().opt;
+ [['fuel',o.fuel],['trans',o.trans],['color',o.color],['country',o.country]].forEach(([id,map])=>{
+  [...$(id).options].forEach(opt=>{if(map[opt.value])opt.textContent=map[opt.value]});
+ });
+ document.querySelectorAll('.equipment-check').forEach(c=>{const label=o.equipment[c.value];if(label)c.nextElementSibling.textContent=label});
+ [...$('make').options].forEach(opt=>{if(opt.value===OTHER_MAKE)opt.textContent=u().otherMake});
+ [...$('model').options].forEach(opt=>{if(opt.value===OTHER_MODEL)opt.textContent=u().otherModel});
 }
 function populateYears(){
  for(let y=new Date().getFullYear();y>=1950;y--)$('year').append(el('option',{value:String(y),textContent:String(y)}));
@@ -61,7 +78,10 @@ function applyLang(){
  document.documentElement.lang=lang();
  Object.keys(d).forEach(k=>{if($(k))$(k).innerHTML=d[k]});
  $('stepLabel').textContent=step===1?d.step:step===2?d.step2:d.step3;
- setFirstOption($('make'),s.chooseMake);setFirstOption($('year'),s.chooseYear);
+ setFirstOption($('make'),s.chooseMake);setFirstOption($('year'),s.chooseYear);setFirstOption($('color'),s.chooseColor);
+ translateOptions();
+ $('pill').textContent=s.pill;$('badge').textContent=s.badge;
+ $('vin').placeholder=s.vinPh;$('trim').placeholder=s.trimPh;
  setFirstOption($('model'),$('make').value?s.chooseModel:s.chooseMakeFirst);
  updatePowerConversion();
  $('vinStatus').textContent=vinChecked?s[vinChecked]:(d.vinHelp||ui.en.vinOk);
@@ -98,10 +118,10 @@ function renderReportLabels(){
 function analyse(){
  const s=u();
  if(!$('make').value.trim()||!$('model').value.trim()||!$('year').value||!$('mileage').value){alert(s.required);return}
- $('carSummary').textContent=$('make').value.trim()+' '+$('model').value.trim();
+ $('carSummary').textContent=optText('make')+' '+optText('model');
  const equipment=selectedEquipment();
- const meta=[$('year').value,Number($('mileage').value).toLocaleString(locale())+' km',$('country').selectedOptions[0].text,$('fuel').value,$('trans').value];
- if($('color').value)meta.push($('color').value);
+ const meta=[$('year').value,Number($('mileage').value).toLocaleString(locale())+' km',optText('country'),optText('fuel'),optText('trans')];
+ if($('color').value)meta.push(optText('color'));
  if(mode==='sell'){
   if($('trim').value)meta.push($('trim').value);
   if(equipment.length)meta.push(equipment.join(', '));
@@ -112,17 +132,18 @@ function analyse(){
  $('metaSummary').textContent=meta.join(' · ');
  renderReportLabels();
  buildSearchLinks();
+ buildCompRows();
  lastSummary=null;
  $('manualResult').textContent=s.afterAnalyse;
  show(3);
  refreshSources();
 }
 function copySummary(){
- const na='not provided',v=id=>$(id).value||na;
- const lines=['AutoValue summary','Market: '+$('country').selectedOptions[0].text,'Mode: '+mode,'Vehicle: '+$('make').value+' '+$('model').value,'Year: '+$('year').value,'Mileage: '+$('mileage').value+' km','Fuel: '+$('fuel').value,'Transmission: '+$('trans').value,'Power: '+v('power')+' kW / '+v('powerHp')+' hp (KM)','Color: '+v('color')];
- if(mode==='sell')lines.push('Asking price: '+($('price').value?$('price').value+' EUR':na),'VIN: '+v('vin'),'Advantages / extras: '+v('sellerPros'),'Known faults / disadvantages: '+v('sellerCons'),'Trim: '+v('trim'),'Equipment: '+(selectedEquipment().join(', ')||na),'Service history: '+v('condition'));
- if(lastSummary){const st=lastSummary.result.stats;lines.push('Comparable ads used: '+st.n,'Median asking price: '+Math.round(st.median)+' EUR','Range: '+Math.round(st.min)+'–'+Math.round(st.max)+' EUR')}
- lines.push('Based only on asking prices entered by the user; not a confirmed market valuation.');
+ const L=u().sum,na=L.na,v=id=>$(id).value||na;
+ const lines=[L.title,L.market+': '+optText('country'),L.mode+': '+(mode==='sell'?L.sell:L.buy),L.vehicle+': '+optText('make')+' '+optText('model'),L.year+': '+$('year').value,L.mileage+': '+$('mileage').value+' km',L.fuel+': '+optText('fuel'),L.trans+': '+optText('trans'),L.power+': '+v('power')+' kW / '+v('powerHp')+' KM',L.color+': '+($('color').value?optText('color'):na)];
+ if(mode==='sell')lines.push(L.asking+': '+($('price').value?$('price').value+' EUR':na),L.vin+': '+v('vin'),L.pros+': '+v('sellerPros'),L.cons+': '+v('sellerCons'),L.trim+': '+v('trim'),L.equipment+': '+(selectedEquipment().join(', ')||na),L.service+': '+v('condition'));
+ if(lastSummary){const st=lastSummary.result.stats;lines.push(L.ads+': '+st.n,L.median+': '+Math.round(st.median)+' EUR',L.range+': '+Math.round(st.min)+'–'+Math.round(st.max)+' EUR')}
+ lines.push(L.note);
  const text=lines.join('\n');
  navigator.clipboard.writeText(text).then(()=>alert(u().copied),()=>prompt(u().copyPrompt,text));
 }
@@ -131,11 +152,11 @@ function copySummary(){
 function buildSearchLinks(){
  const s=u(),box=$('searchLinks'),sites=marketSites[$('country').value]||[];
  const year=Number($('year').value),mileage=Number($('mileage').value),hasPower=$('powerEntry').value.trim()!=='';
- const q=core.buildVehicleQuery({make:$('make').value.trim(),model:$('model').value.trim(),year,mileage,fuel:$('fuel').value,transmission:$('trans').value,mode,trim:$('trim').value.trim(),kw:Number($('power').value),hp:hasPower?Number($('powerHp').value):0,equipment:selectedEquipment()});
+ const q=core.buildVehicleQuery({make:realMake(),model:realModel(),year,mileage,fuel:$('fuel').value,transmission:$('trans').value,mode,trim:$('trim').value.trim(),kw:Number($('power').value),hp:hasPower?Number($('powerHp').value):0,equipment:selectedEquipment()});
  const years=year?[year-1,year,year+1].join(', '):'—';
  const km=mileage>0?Math.max(0,mileage-50000).toLocaleString(locale())+'–'+(mileage+50000).toLocaleString(locale())+' km':'—';
  const power=hasPower?Math.round(Number($('powerHp').value))+' KM / '+Math.round(Number($('power').value))+' kW':s.notSpecified;
- const filters=el('p',{className:'note search-filters',textContent:s.filtersLead+$('country').selectedOptions[0].text+' · '+s.fYears+years+' · '+s.fKm+km+' · '+s.fFuel+$('fuel').value+' · '+s.fPower+power+' · '+s.fTrans+$('trans').value+'. '+s.filtersTail});
+ const filters=el('p',{className:'note search-filters',textContent:s.filtersLead+optText('country')+' · '+s.fYears+years+' · '+s.fKm+km+' · '+s.fFuel+optText('fuel')+' · '+s.fPower+power+' · '+s.fTrans+optText('trans')+'. '+s.filtersTail});
  box.replaceChildren(filters,...sites.map(([name,domain])=>el('a',{className:'search-link',target:'_blank',rel:'noopener noreferrer',href:'https://www.google.com/search?q='+encodeURIComponent('site:'+domain+' '+q),textContent:s.searchPrefix+name+' ↗'})));
 }
 
@@ -147,10 +168,11 @@ function readRows(){
 }
 function buildCompRows(rows){
  const s=u(),box=$('compRows'),prev=rows||readRows();
+ const exampleDomain=((marketSites[$('country').value]||[])[0]||['','avto.net'])[1];
  compCount=Math.max(compCount,prev.length);
  box.replaceChildren();
  for(let i=1;i<=compCount;i++){
-  const link=el('input',{type:'url',id:'link'+i,placeholder:s.link+i+' — https://www.avto.net/…'});link.setAttribute('aria-label',s.link+i);
+  const link=el('input',{type:'url',id:'link'+i,placeholder:s.link+i+' — https://www.'+exampleDomain+'/…'});link.setAttribute('aria-label',s.link+i);
   const open=el('button',{type:'button',className:'btn quiet comp-open',id:'open'+i,textContent:s.open});
   const text=el('textarea',{id:'text'+i,rows:2,placeholder:s.paste});
   const info=el('div',{className:'comp-info',id:'info'+i,textContent:s.empty});
@@ -273,6 +295,7 @@ function loadListings(){
 }
 
 // --- Init ---
+populateMakes();
 populateYears();
 setModels();
 $('make').addEventListener('change',setModels);
