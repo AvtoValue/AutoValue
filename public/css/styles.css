@@ -20,3 +20,4 @@
 }
 .brand-link{color:var(--text);text-decoration:none}.legal h1{font-size:30px;letter-spacing:-.5px;margin:14px 0 4px}.legal h2{font-size:18px;margin:24px 0 6px}.legal p{color:#c9d1dc;line-height:1.65;font-size:15px;margin:0}.legal .updated{color:var(--muted);font-size:13px}.legal a{color:var(--accent)}.legal .back{font-size:13px;text-decoration:none}.footer a{color:#a6b0c0}
 #legalLang{width:auto}
+.logo-img{width:36px;height:36px;border-radius:9px;display:block}
